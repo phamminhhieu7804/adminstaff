@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, getDoc, query, where, updateDoc, addDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where, updateDoc, addDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ShieldCheck, Calendar, Phone, Mail, MessageCircle, PackageSearch, Key, Crown, Star, QrCode, X, CreditCard, Loader2 } from 'lucide-react';
 import { useStore } from '../StoreContext';
@@ -22,15 +22,60 @@ export default function SubscriptionTab() {
   const [paymentState, setPaymentState] = useState('idle'); // 'idle' | 'waiting' | 'success'
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
   const [discountCode, setDiscountCode] = useState('');
+  const [timeLeft, setTimeLeft] = useState(15 * 60);
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    if (selectedBuyPackage && paymentState === 'idle') {
+      if (timeLeft > 0) {
+        const timer = setInterval(() => {
+          setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+      } else {
+        alert("Mã thanh toán đã hết hạn. Vui lòng chọn lại gói cước.");
+        setSelectedBuyPackage(null);
+      }
+    }
+  }, [selectedBuyPackage, paymentState, timeLeft]);
 
   const isPro = storeData?.packageType === 'Pro';
 
-  const handleOpenPayment = (pkg) => {
+  // BỔ SUNG LƯU ĐƠN HÀNG VÀO FIRESTORE KHI MỞ THANH TOÁN
+  const handleOpenPayment = async (pkg) => {
     setSelectedBuyPackage(pkg);
     setPaymentState('idle');
     setPaymentSuccessMsg('');
     setDiscountCode('');
-    setOrderCode(`PAY${storeData?.id?.substring(0,6).toUpperCase()}${Math.floor(1000+Math.random()*9000)}`);
+    setTimeLeft(15 * 60);
+
+    const generatedCode = `PAY${storeData?.id?.substring(0, 6).toUpperCase() || 'STORE'}${Math.floor(1000 + Math.random() * 9000)}`;
+    setOrderCode(generatedCode);
+
+    // Tính toán số tiền cuối cùng sau giảm giá (nếu có)
+    const finalPrice = pkg.discount > 0 ? pkg.price - (pkg.price * pkg.discount / 100) : pkg.price;
+    const durationDays = pkg.durationDays || (pkg.durationUnit === 'hours' ? pkg.durationValue / 24 : pkg.durationValue) || 30;
+
+    try {
+      // Lưu thông tin đơn hàng vào Firestore 'orders'
+      await setDoc(doc(db, 'orders', generatedCode), {
+        orderCode: generatedCode,
+        storeId: storeData?.id || '',
+        planId: pkg.id || 'Pro',
+        planName: pkg.name || '',
+        amount: finalPrice,
+        durationDays: durationDays,
+        status: 'PENDING',
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Lỗi khi tạo đơn hàng trên Firestore:", error);
+    }
   };
 
   useEffect(() => {
@@ -47,12 +92,11 @@ export default function SubscriptionTab() {
           const data = change.doc.data();
           const finalPrice = selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price;
           
-          if (data.content && data.content.includes(orderCode) && data.amountIn >= finalPrice) {
+          if (data.content && data.content.includes(orderCode) && data.transferAmount >= finalPrice) {
             const duration = `${selectedBuyPackage.durationValue || selectedBuyPackage.durationDays} ${(selectedBuyPackage.durationUnit || 'days') === 'days' ? 'ngày' : selectedBuyPackage.durationUnit === 'hours' ? 'giờ' : 'phút'}`;
             setPaymentState('success');
             setPaymentSuccessMsg(`Cảm ơn quý khách đã thanh toán gói ${selectedBuyPackage.name} thành công! Đã được cộng ${duration}.`);
             
-            // Optionally close the modal after 5 seconds and redirect
             setTimeout(() => {
                setSelectedBuyPackage(null);
                window.location.href = '/';
@@ -115,7 +159,6 @@ export default function SubscriptionTab() {
     setMessage('');
 
     try {
-      // 1. Check Key
       const q = query(collection(db, 'subscription_keys'), where('key', '==', activationKey.trim()));
       const snap = await getDocs(q);
       
@@ -137,7 +180,6 @@ export default function SubscriptionTab() {
       const keyType = keyData.type || 'Thường';
       const currentType = storeData.packageType || 'Thường';
 
-      // 2. Calculate new expiry
       let baseDate = new Date();
       const currExp = storeData.expiresAt ? new Date(storeData.expiresAt) : new Date();
       const now = new Date();
@@ -146,21 +188,18 @@ export default function SubscriptionTab() {
       const dUnit = keyData.durationUnit || 'days';
       let newDaysToAdd = dUnit === 'days' ? dVal : (dUnit === 'hours' ? dVal / 24 : dVal / 1440);
 
-      // Check if upgrading from Thường to Pro
       if (currentType === 'Thường' && keyType === 'Pro' && currExp > now) {
         const remainingMs = currExp - now;
         const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
         const convertedDays = Math.floor(remainingDays * 0.3);
         const totalProDays = newDaysToAdd + convertedDays;
 
-        // Show conversion popup
         setConversionPopup({
           remainingDays,
           convertedDays,
           newKeyDays: newDaysToAdd,
           totalDays: totalProDays,
           onConfirm: async () => {
-            // Reset base to now (not extending old Thường expiry)
             const newExpiry = addDays(now, totalProDays).toISOString();
             
             await updateDoc(doc(db, 'stores', storeData.id), { 
@@ -194,12 +233,11 @@ export default function SubscriptionTab() {
             setIsActivating(false);
           }
         });
-        return; // Wait for user confirmation
+        return;
       }
 
-      // Normal activation (same type or no remaining days)
       if (currExp > now && currentType === keyType) {
-        baseDate = currExp; // Extend existing
+        baseDate = currExp;
       }
       
       let newExpiry;
@@ -211,20 +249,17 @@ export default function SubscriptionTab() {
         newExpiry = addMinutes(baseDate, dVal).toISOString();
       }
       
-      // Update Store with packageType
       await updateDoc(doc(db, 'stores', storeData.id), { 
         expiresAt: newExpiry,
         packageType: keyType
       });
       
-      // Update Key
       await updateDoc(doc(db, 'subscription_keys', keyDoc.id), {
         isUsed: true,
         usedByStoreId: storeData.id,
         usedAt: new Date().toISOString()
       });
 
-      // Add History
       await addDoc(collection(db, 'subscription_history'), {
         storeId: storeData.id,
         storeUsername: storeData.username || storeData.storeName || '',
@@ -234,7 +269,6 @@ export default function SubscriptionTab() {
         createdAt: new Date().toISOString()
       });
 
-      // Update Local State manually so it reflects immediately
       setStoreData(prev => ({ ...prev, expiresAt: newExpiry, packageType: keyType }));
       setActivationKey('');
       setMessage('✅ Kích hoạt thành công!');
@@ -247,7 +281,6 @@ export default function SubscriptionTab() {
   };
 
   const expDate = storeData?.expiresAt ? new Date(storeData.expiresAt) : new Date();
-  const daysLeft = Math.max(0, differenceInDays(expDate, new Date()));
 
   return (
     <div className="w-full space-y-6">
@@ -259,7 +292,6 @@ export default function SubscriptionTab() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Status Card */}
         {/* Status Card */}
         <div className={`rounded-2xl border p-6 shadow-sm flex flex-col h-full bg-white ${isPro ? 'border-amber-300' : 'border-gray-200'}`}>
            <h3 className={`text-lg font-bold mb-4 ${isPro ? 'text-amber-600' : 'text-gray-900'}`}>Gói cước hiện tại: {isPro ? 'Pro' : 'Thường'}</h3>
@@ -452,17 +484,6 @@ export default function SubscriptionTab() {
                      <p className="text-gray-600 leading-relaxed mb-6">{paymentSuccessMsg}</p>
                      <p className="text-sm text-gray-400 italic">Đang tự động chuyển về trang chủ...</p>
                   </div>
-               ) : paymentState === 'waiting' ? (
-                  <div className="text-center py-10 animate-in fade-in duration-300">
-                     <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-5" />
-                     <h3 className="text-xl font-bold text-gray-900 mb-2">Đang kiểm tra giao dịch...</h3>
-                     <p className="text-gray-500 leading-relaxed mb-8 text-sm max-w-[260px] mx-auto">
-                        Hệ thống đang chờ xác nhận từ ngân hàng. Vui lòng không đóng cửa sổ này.
-                     </p>
-                     <button onClick={() => setPaymentState('idle')} className="text-sm text-gray-400 hover:text-gray-900 underline transition-colors">
-                        Quay lại mã QR
-                     </button>
-                  </div>
                ) : (
                   <>
                      <div className={`rounded-xl p-4 mb-5 ${selectedBuyPackage.type === 'Pro' ? 'bg-amber-50 border border-amber-100' : 'bg-blue-50 border border-blue-100'}`}>
@@ -496,22 +517,36 @@ export default function SubscriptionTab() {
                      </div>
 
                      <div className="text-center mb-6">
-                        <p className="text-sm mb-2 font-medium text-gray-700">Quét mã QR để thanh toán tự động</p>
-                        <p className="text-xs text-gray-500 mb-4">Nội dung CK: <b className="text-gray-900">{orderCode}</b></p>
+                        <div className="flex justify-between items-end mb-4 text-left">
+                           <div>
+                              <p className="text-sm font-medium text-gray-700">Quét mã để thanh toán tự động</p>
+                              <p className="text-xs text-gray-500 mt-1">Nội dung CK: <b className="text-gray-900">{orderCode}</b></p>
+                           </div>
+                           <div className="text-right">
+                              <p className="text-xs text-gray-500 mb-1">Thời gian giữ mã</p>
+                              <div className={`text-lg font-bold font-mono ${timeLeft < 300 ? 'text-red-500 animate-pulse' : 'text-blue-600'}`}>
+                                 {formatTime(timeLeft)}
+                              </div>
+                           </div>
+                        </div>
                         
                         {/* Dynamic QR Code from VietQR */}
-                        <div className="mx-auto w-full max-w-[240px] bg-white p-2 rounded-xl border border-gray-200 relative">
+                        <div className="mx-auto w-full max-w-[240px] bg-white p-2 rounded-xl border border-gray-200 relative mb-4">
                            <img 
                               src={`https://vietqr.app/img?bank=TPBank&acc=00001937189&template=compact&showinfo=true&holder=PHAM MINH HIEU&amount=${selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price}&addInfo=${orderCode}&memo=${orderCode}&des=${orderCode}`} 
                               alt="QR Thanh Toan"
                               className="w-full h-auto rounded-lg"
                            />
                         </div>
-                     </div>
 
-                     <button onClick={() => setPaymentState('waiting')} className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm ${selectedBuyPackage.type === 'Pro' ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-amber-500/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'}`}>
-                       <CreditCard className="w-5 h-5" /> Tôi đã chuyển khoản
-                     </button>
+                        <div className="flex flex-col items-center justify-center space-y-2 mt-4">
+                           <div className="flex items-center gap-2 text-blue-600 font-medium">
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              <span>Hệ thống đang chờ nhận tiền...</span>
+                           </div>
+                           <p className="text-xs text-gray-400">Trạng thái sẽ tự động cập nhật ngay khi bạn chuyển khoản thành công.</p>
+                        </div>
+                     </div>
                   </>
                )}
             </div>
