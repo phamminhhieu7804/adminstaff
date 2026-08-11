@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, getDoc, query, where, updateDoc, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ShieldCheck, Calendar, Phone, Mail, MessageCircle, PackageSearch, Key, Crown, Star, QrCode, X, CreditCard } from 'lucide-react';
+import { ShieldCheck, Calendar, Phone, Mail, MessageCircle, PackageSearch, Key, Crown, Star, QrCode, X, CreditCard, Loader2 } from 'lucide-react';
 import { useStore } from '../StoreContext';
 import { useUI } from '../contexts/UIContext';
 import { format, differenceInDays, addDays, addHours, addMinutes } from 'date-fns';
@@ -19,6 +19,7 @@ export default function SubscriptionTab() {
   const [conversionPopup, setConversionPopup] = useState(null);
   const [selectedBuyPackage, setSelectedBuyPackage] = useState(null);
   const [orderCode, setOrderCode] = useState('');
+  const [paymentState, setPaymentState] = useState('idle'); // 'idle' | 'waiting' | 'success'
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
   const [discountCode, setDiscountCode] = useState('');
 
@@ -26,6 +27,7 @@ export default function SubscriptionTab() {
 
   const handleOpenPayment = (pkg) => {
     setSelectedBuyPackage(pkg);
+    setPaymentState('idle');
     setPaymentSuccessMsg('');
     setDiscountCode('');
     setOrderCode(`PAY${storeData?.id?.substring(0,6).toUpperCase()}${Math.floor(1000+Math.random()*9000)}`);
@@ -47,12 +49,13 @@ export default function SubscriptionTab() {
           
           if (data.content && data.content.includes(orderCode) && data.amountIn >= finalPrice) {
             const duration = `${selectedBuyPackage.durationValue || selectedBuyPackage.durationDays} ${(selectedBuyPackage.durationUnit || 'days') === 'days' ? 'ngày' : selectedBuyPackage.durationUnit === 'hours' ? 'giờ' : 'phút'}`;
-            setPaymentSuccessMsg(`Chúc mừng bạn đã thanh toán gói ${selectedBuyPackage.name} thành công! Đã được cộng ${duration}. Hãy kiểm tra lại thông tin phần mềm.`);
+            setPaymentState('success');
+            setPaymentSuccessMsg(`Cảm ơn quý khách đã thanh toán gói ${selectedBuyPackage.name} thành công! Đã được cộng ${duration}.`);
             
-            // Optionally close the modal after 5 seconds
+            // Optionally close the modal after 5 seconds and redirect
             setTimeout(() => {
                setSelectedBuyPackage(null);
-               window.location.reload();
+               window.location.href = '/';
             }, 5000);
           }
         }
@@ -440,14 +443,25 @@ export default function SubscriptionTab() {
 
             {/* Content */}
             <div className="p-6">
-               {paymentSuccessMsg ? (
-                  <div className="text-center py-8">
+               {paymentState === 'success' && paymentSuccessMsg ? (
+                  <div className="text-center py-8 animate-in fade-in zoom-in duration-300">
                      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <ShieldCheck className="w-8 h-8 text-green-600" />
                      </div>
                      <h3 className="text-xl font-bold text-gray-900 mb-2">Thanh toán thành công!</h3>
                      <p className="text-gray-600 leading-relaxed mb-6">{paymentSuccessMsg}</p>
-                     <p className="text-sm text-gray-400 italic">Cửa sổ sẽ tự động đóng sau vài giây...</p>
+                     <p className="text-sm text-gray-400 italic">Đang tự động chuyển về trang chủ...</p>
+                  </div>
+               ) : paymentState === 'waiting' ? (
+                  <div className="text-center py-10 animate-in fade-in duration-300">
+                     <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-5" />
+                     <h3 className="text-xl font-bold text-gray-900 mb-2">Đang kiểm tra giao dịch...</h3>
+                     <p className="text-gray-500 leading-relaxed mb-8 text-sm max-w-[260px] mx-auto">
+                        Hệ thống đang chờ xác nhận từ ngân hàng. Vui lòng không đóng cửa sổ này.
+                     </p>
+                     <button onClick={() => setPaymentState('idle')} className="text-sm text-gray-400 hover:text-gray-900 underline transition-colors">
+                        Quay lại mã QR
+                     </button>
                   </div>
                ) : (
                   <>
@@ -488,14 +502,16 @@ export default function SubscriptionTab() {
                         {/* Dynamic QR Code from VietQR */}
                         <div className="mx-auto w-full max-w-[240px] bg-white p-2 rounded-xl border border-gray-200 relative">
                            <img 
-                              src={`https://vietqr.app/img?bank=TPBank&acc=00001937189&template=compact&showinfo=true&holder=PHAM MINH HIEU&amount=${selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price}&addInfo=${orderCode}`} 
+                              src={`https://vietqr.app/img?bank=TPBank&acc=00001937189&template=compact&showinfo=true&holder=PHAM MINH HIEU&amount=${selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price}&addInfo=${orderCode}&memo=${orderCode}&des=${orderCode}`} 
                               alt="QR Thanh Toan"
                               className="w-full h-auto rounded-lg"
                            />
                         </div>
                      </div>
 
-
+                     <button onClick={() => setPaymentState('waiting')} className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm ${selectedBuyPackage.type === 'Pro' ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-amber-500/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'}`}>
+                       <CreditCard className="w-5 h-5" /> Tôi đã chuyển khoản
+                     </button>
                   </>
                )}
             </div>
