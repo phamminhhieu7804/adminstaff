@@ -495,9 +495,7 @@ export default function SubscriptionTab() {
                         </div>
                      </div>
 
-                     <button className={`w-full py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm ${selectedBuyPackage.type === 'Pro' ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-amber-500/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'}`}>
-                       <CreditCard className="w-5 h-5" /> Đã thanh toán, kiểm tra
-                     </button>
+
                   </>
                )}
             </div>

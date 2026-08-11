@@ -6,7 +6,6 @@ import { db } from '../lib/firebase';
 
 export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pendingCount, onLogout, packageType, storeId }) {
   const isPro = packageType === 'Pro';
-  const [upgradePopup, setUpgradePopup] = useState(false);
   const [contactInfo, setContactInfo] = useState(null);
 
   useEffect(() => {
@@ -111,15 +110,18 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pe
         </div>
         
         {/* Package badge */}
-        <div className={cn("mx-3 mb-3 p-3 rounded-xl text-center", isPro ? "bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/20" : "bg-gray-50 border border-gray-100")}>
+        <div 
+          onClick={() => { if (!isPro) setActiveTab('subscription'); }}
+          className={cn("mx-3 mb-3 p-3 rounded-xl text-center", isPro ? "bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border border-yellow-500/20" : "bg-gray-50 border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors")}
+        >
           <div className="flex items-center justify-center gap-1.5 mb-1">
             {isPro ? <Crown className="w-4 h-4 text-yellow-500" /> : <ShieldCheck className="w-4 h-4 text-gray-400" />}
             <span className={cn("text-xs font-bold", isPro ? "text-yellow-400" : "text-gray-500")}>{isPro ? 'GÓI PRO' : 'GÓI THƯỜNG'}</span>
           </div>
           {!isPro && (
-            <button onClick={() => setUpgradePopup(true)} className="text-[10px] text-blue-600 hover:underline font-medium">
+            <span className="text-[10px] text-blue-600 font-medium">
               Nâng cấp Pro →
-            </button>
+            </span>
           )}
         </div>
 
@@ -135,50 +137,6 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pe
           </button>
         </div>
       </div>
-
-      {/* Upgrade Popup */}
-      {upgradePopup && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="bg-gradient-to-r from-yellow-500 to-amber-500 p-6 text-white text-center">
-              <Crown className="w-12 h-12 mx-auto mb-2" />
-              <h3 className="text-xl font-black">Nâng cấp gói Pro</h3>
-              <p className="text-yellow-100 text-sm mt-1">Mở khóa tất cả tính năng cao cấp</p>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-gray-600 text-sm text-center">Tính năng này chỉ khả dụng ở gói <b className="text-yellow-600">Pro</b>. Vui lòng liên hệ để nâng cấp:</p>
-              <div className="space-y-3">
-                {contactInfo?.phone && (
-                  <a href={`tel:${contactInfo.phone}`} className="flex items-center gap-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-xl text-blue-700 transition-colors font-bold text-sm">
-                    <Phone className="w-5 h-5"/> {contactInfo.phone}
-                  </a>
-                )}
-                {contactInfo?.email && (
-                  <a href={`mailto:${contactInfo.email}`} className="flex items-center gap-3 p-3 bg-blue-50 hover:bg-blue-100 rounded-xl text-blue-700 transition-colors font-bold text-sm">
-                    <Mail className="w-5 h-5"/> {contactInfo.email}
-                  </a>
-                )}
-                {!contactInfo && (
-                  <>
-                    <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl text-blue-700 font-bold text-sm">
-                      <Phone className="w-5 h-5"/> 0356959935
-                    </div>
-                    <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl text-blue-700 font-bold text-sm">
-                      <Mail className="w-5 h-5"/> phamminhhieu7804@gmail.com
-                    </div>
-                  </>
-                )}
-              </div>
-              <button 
-                onClick={() => setUpgradePopup(false)}
-                className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-colors"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
