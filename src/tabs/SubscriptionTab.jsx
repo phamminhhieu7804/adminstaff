@@ -6,6 +6,14 @@ import { useStore } from '../StoreContext';
 import { useUI } from '../contexts/UIContext';
 import { format, differenceInDays, addDays, addHours, addMinutes } from 'date-fns';
 
+const parseDate = (val) => {
+  if (!val) return new Date();
+  if (typeof val === 'object' && val.seconds) return new Date(val.seconds * 1000);
+  if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate();
+  const parsed = new Date(val);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
 export default function SubscriptionTab() {
   const { storeData, setStoreData } = useStore();
   const { showToast } = useUI();
@@ -53,18 +61,21 @@ export default function SubscriptionTab() {
     setPaymentSuccessMsg('');
     setDiscountCode('');
     setTimeLeft(15 * 60);
+    
+    // Tạo mã đơn hàng
+    const safeStoreId = storeData?.id ? storeData.id.substring(0, 6).toUpperCase() : 'STORE';
+    const newOrderCode = `PAY${safeStoreId}${Math.floor(1000 + Math.random() * 9000)}`;
+    setOrderCode(newOrderCode);
 
-    const generatedCode = `PAY${storeData?.id?.substring(0, 6).toUpperCase() || 'STORE'}${Math.floor(1000 + Math.random() * 9000)}`;
-    setOrderCode(generatedCode);
-
-    // Tính toán số tiền cuối cùng sau giảm giá (nếu có)
+    // Tính giá cuối cùng để lưu vào Database
     const finalPrice = pkg.discount > 0 ? pkg.price - (pkg.price * pkg.discount / 100) : pkg.price;
     const durationDays = pkg.durationDays || (pkg.durationUnit === 'hours' ? pkg.durationValue / 24 : pkg.durationValue) || 30;
 
     try {
       // Lưu thông tin đơn hàng vào Firestore 'orders'
-      await setDoc(doc(db, 'orders', generatedCode), {
-        orderCode: generatedCode,
+      // Để webhook backend có thể đối soát
+      await setDoc(doc(db, 'orders', newOrderCode), {
+        orderCode: newOrderCode,
         storeId: storeData?.id || '',
         planId: pkg.id || 'Pro',
         planName: pkg.name || '',
@@ -131,7 +142,7 @@ export default function SubscriptionTab() {
   useEffect(() => {
     if (!storeData?.expiresAt) return;
     const interval = setInterval(() => {
-      const exp = new Date(storeData.expiresAt);
+      const exp = parseDate(storeData.expiresAt);
       const now = new Date();
       if (exp > now) {
         const ms = exp - now;
@@ -181,7 +192,7 @@ export default function SubscriptionTab() {
       const currentType = storeData.packageType || 'Thường';
 
       let baseDate = new Date();
-      const currExp = storeData.expiresAt ? new Date(storeData.expiresAt) : new Date();
+      const currExp = parseDate(storeData.expiresAt);
       const now = new Date();
       
       const dVal = keyData.durationValue || keyData.durationDays;
@@ -280,7 +291,7 @@ export default function SubscriptionTab() {
     }
   };
 
-  const expDate = storeData?.expiresAt ? new Date(storeData.expiresAt) : new Date();
+  const expDate = parseDate(storeData?.expiresAt);
 
   return (
     <div className="w-full space-y-6">
