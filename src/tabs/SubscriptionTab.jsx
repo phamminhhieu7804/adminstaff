@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, doc, getDoc, query, where, updateDoc, addDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where, updateDoc, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { ShieldCheck, Calendar, Phone, Mail, MessageCircle, PackageSearch, Key, Crown, Star, QrCode, X, CreditCard, Loader2 } from 'lucide-react';
 import { useStore } from '../StoreContext';
 import { useUI } from '../contexts/UIContext';
 import { format, differenceInDays, addDays, addHours, addMinutes } from 'date-fns';
+import { fetchPackages, createOrder } from '../lib/api';
 
 const parseDate = (val) => {
   if (!val) return new Date();
@@ -27,10 +28,13 @@ export default function SubscriptionTab() {
   const [conversionPopup, setConversionPopup] = useState(null);
   const [selectedBuyPackage, setSelectedBuyPackage] = useState(null);
   const [orderCode, setOrderCode] = useState('');
+  const [qrUrl, setQrUrl] = useState('');
+  const [orderAmount, setOrderAmount] = useState(0);
   const [paymentState, setPaymentState] = useState('idle'); // 'idle' | 'waiting' | 'success'
   const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
   const [discountCode, setDiscountCode] = useState('');
   const [timeLeft, setTimeLeft] = useState(15 * 60);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
@@ -54,80 +58,66 @@ export default function SubscriptionTab() {
 
   const isPro = storeData?.packageType === 'Pro';
 
-  // BỔ SUNG LƯU ĐƠN HÀNG VÀO FIRESTORE KHI MỞ THANH TOÁN
+  // GỌI API GATEWAY ĐỂ TẠO ĐƠN HÀNG + LẤY QR
   const handleOpenPayment = async (pkg) => {
     setSelectedBuyPackage(pkg);
     setPaymentState('idle');
     setPaymentSuccessMsg('');
     setDiscountCode('');
     setTimeLeft(15 * 60);
-    
-    // Tạo mã đơn hàng
-    const safeStoreId = storeData?.id ? storeData.id.substring(0, 6).toUpperCase() : 'STORE';
-    const newOrderCode = `PAY${safeStoreId}${Math.floor(1000 + Math.random() * 9000)}`;
-    setOrderCode(newOrderCode);
-
-    // Tính giá cuối cùng để lưu vào Database
-    const finalPrice = pkg.discount > 0 ? pkg.price - (pkg.price * pkg.discount / 100) : pkg.price;
-    const durationDays = pkg.durationDays || (pkg.durationUnit === 'hours' ? pkg.durationValue / 24 : pkg.durationValue) || 30;
+    setIsCreatingOrder(true);
+    setOrderCode('');
+    setQrUrl('');
 
     try {
-      // Lưu thông tin đơn hàng vào Firestore 'orders'
-      // Để webhook backend có thể đối soát
-      await setDoc(doc(db, 'orders', newOrderCode), {
-        orderCode: newOrderCode,
-        storeId: storeData?.id || '',
-        planId: pkg.id || 'Pro',
-        planName: pkg.name || '',
-        amount: finalPrice,
-        durationDays: durationDays,
-        status: 'PENDING',
-        createdAt: new Date().toISOString()
-      });
+      // Gọi API Gateway: POST /api/create-order
+      const result = await createOrder(storeData?.id, pkg.id);
+      
+      setOrderCode(result.orderCode);
+      setQrUrl(result.qrUrl);
+      setOrderAmount(result.amount);
     } catch (error) {
-      console.error("Lỗi khi tạo đơn hàng trên Firestore:", error);
+      console.error("Lỗi khi tạo đơn hàng:", error);
+      showToast('Lỗi khi tạo đơn hàng. Vui lòng thử lại.', 'error');
+      setSelectedBuyPackage(null);
+    } finally {
+      setIsCreatingOrder(false);
     }
   };
 
+  // Lắng nghe trạng thái đơn hàng trực tiếp từ orders/{orderCode}
   useEffect(() => {
-    if (!selectedBuyPackage || !orderCode || paymentSuccessMsg || !storeData?.id) return;
+    if (!orderCode || paymentSuccessMsg) return;
 
-    const q = query(
-      collection(db, 'sepay_transactions'),
-      where('storeId', '==', storeData.id)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added' || change.type === 'modified') {
-          const data = change.doc.data();
-          const finalPrice = selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price;
+    const unsubscribe = onSnapshot(doc(db, 'orders', orderCode), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.status === 'SUCCESS') {
+          const duration = `${selectedBuyPackage?.durationValue || selectedBuyPackage?.durationDays || ''} ${(selectedBuyPackage?.durationUnit || 'days') === 'days' ? 'ngày' : selectedBuyPackage?.durationUnit === 'hours' ? 'giờ' : 'phút'}`;
+          setPaymentState('success');
+          setPaymentSuccessMsg(`Cảm ơn quý khách đã thanh toán gói ${selectedBuyPackage?.name || ''} thành công! Đã được cộng ${duration}.`);
           
-          if (data.content && data.content.includes(orderCode) && data.transferAmount >= finalPrice) {
-            const duration = `${selectedBuyPackage.durationValue || selectedBuyPackage.durationDays} ${(selectedBuyPackage.durationUnit || 'days') === 'days' ? 'ngày' : selectedBuyPackage.durationUnit === 'hours' ? 'giờ' : 'phút'}`;
-            setPaymentState('success');
-            setPaymentSuccessMsg(`Cảm ơn quý khách đã thanh toán gói ${selectedBuyPackage.name} thành công! Đã được cộng ${duration}.`);
-            
-            setTimeout(() => {
-               setSelectedBuyPackage(null);
-               window.location.href = '/';
-            }, 5000);
-          }
+          setTimeout(() => {
+             setSelectedBuyPackage(null);
+             window.location.href = '/';
+          }, 5000);
         }
-      });
+      }
     }, (error) => {
-       console.log("SePay listener error (might need index):", error);
+       console.log("Order listener error:", error);
     });
 
     return () => unsubscribe();
-  }, [selectedBuyPackage, orderCode, paymentSuccessMsg, storeData]);
+  }, [orderCode, paymentSuccessMsg, selectedBuyPackage]);
 
   useEffect(() => {
     const fetchInfo = async () => {
       try {
-        const pSnap = await getDocs(collection(db, 'subscription_packages'));
-        setPackages(pSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        // Lấy gói cước qua API Gateway thay vì Firestore trực tiếp
+        const pkgList = await fetchPackages();
+        setPackages(pkgList);
         
+        // Contact info vẫn đọc trực tiếp từ Firestore (không nằm trong flow thanh toán)
         const cSnap = await getDoc(doc(db, 'system_settings', 'contact_info'));
         if (cSnap.exists()) setContactInfo(cSnap.data());
       } catch (e) {
@@ -495,6 +485,11 @@ export default function SubscriptionTab() {
                      <p className="text-gray-600 leading-relaxed mb-6">{paymentSuccessMsg}</p>
                      <p className="text-sm text-gray-400 italic">Đang tự động chuyển về trang chủ...</p>
                   </div>
+               ) : isCreatingOrder ? (
+                  <div className="text-center py-12">
+                     <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto mb-4" />
+                     <p className="text-gray-600 font-medium">Đang tạo đơn hàng...</p>
+                  </div>
                ) : (
                   <>
                      <div className={`rounded-xl p-4 mb-5 ${selectedBuyPackage.type === 'Pro' ? 'bg-amber-50 border border-amber-100' : 'bg-blue-50 border border-blue-100'}`}>
@@ -508,7 +503,7 @@ export default function SubscriptionTab() {
                         <div className={`flex justify-between items-end border-t border-dashed pt-3 mt-3 ${selectedBuyPackage.type === 'Pro' ? 'border-amber-200' : 'border-blue-200'}`}>
                            <span className="text-sm text-gray-500">Thành tiền</span>
                            <span className={`text-xl font-black ${selectedBuyPackage.type === 'Pro' ? 'text-amber-600' : 'text-blue-700'}`}>
-                             {new Intl.NumberFormat('vi-VN').format(selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price)}đ
+                             {new Intl.NumberFormat('vi-VN').format(orderAmount || (selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price))}đ
                            </span>
                         </div>
                      </div>
@@ -541,13 +536,19 @@ export default function SubscriptionTab() {
                            </div>
                         </div>
                         
-                        {/* Dynamic QR Code from VietQR */}
+                        {/* QR Code từ API Gateway (không còn hardcode bank info) */}
                         <div className="mx-auto w-full max-w-[240px] bg-white p-2 rounded-xl border border-gray-200 relative mb-4">
-                           <img 
-                              src={`https://vietqr.app/img?bank=TPBank&acc=00001937189&template=compact&showinfo=true&holder=PHAM MINH HIEU&amount=${selectedBuyPackage.discount > 0 ? selectedBuyPackage.price - (selectedBuyPackage.price * selectedBuyPackage.discount / 100) : selectedBuyPackage.price}&addInfo=${orderCode}&memo=${orderCode}&des=${orderCode}`} 
-                              alt="QR Thanh Toan"
-                              className="w-full h-auto rounded-lg"
-                           />
+                           {qrUrl ? (
+                              <img 
+                                 src={qrUrl} 
+                                 alt="QR Thanh Toán"
+                                 className="w-full h-auto rounded-lg"
+                              />
+                           ) : (
+                              <div className="w-full aspect-square flex items-center justify-center">
+                                 <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                              </div>
+                           )}
                         </div>
 
                         <div className="flex flex-col items-center justify-center space-y-2 mt-4">
