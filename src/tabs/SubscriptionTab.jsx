@@ -131,7 +131,8 @@ export default function SubscriptionTab() {
 
   useEffect(() => {
     if (!storeData?.expiresAt) return;
-    const interval = setInterval(() => {
+
+    const calculateTimeLeft = () => {
       const exp = parseDate(storeData.expiresAt);
       const now = new Date();
       if (exp > now) {
@@ -150,7 +151,10 @@ export default function SubscriptionTab() {
       } else {
         setTimeLeftStr('Đã hết hạn');
       }
-    }, 1000);
+    };
+
+    calculateTimeLeft(); // Tính toán ngay lập tức lần đầu
+    const interval = setInterval(calculateTimeLeft, 1000);
     return () => clearInterval(interval);
   }, [storeData?.expiresAt]);
 
