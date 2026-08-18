@@ -3,7 +3,7 @@ import { collection, query, getDocs, doc, getDoc, setDoc, deleteDoc, where, upda
 import { useTranslation } from 'react-i18next';
 import { useUI } from '../contexts/UIContext';
 import { db } from '../lib/firebase';
-import { Plus, Edit2, Trash2, Search, X, CheckCircle2, TrendingUp, TrendingDown, Lock, Gift, Camera } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, CheckCircle2, TrendingUp, TrendingDown, Lock, Gift, Camera, User } from 'lucide-react';
 import FaceCaptureModal from '../components/FaceCaptureModal';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
@@ -358,28 +358,39 @@ export default function EmployeesTab() {
                 filteredEmployees.map((emp) => (
                   <tr key={emp.employeeCode} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{emp.employeeCode}</td>
-                    <td className={cn("px-6 py-4 whitespace-nowrap text-sm font-medium flex items-center gap-2", emp.isLocked ? "text-red-600" : "text-gray-900")}>
-                      {!emp.isLocked ? (
-                        <span 
-                          onClick={() => setLockEmpModal({ show: true, employeeCode: emp.employeeCode, employeeName: emp.fullName, note: '' })}
-                          className="cursor-pointer hover:text-blue-600 hover:underline transition-colors"
-                          title={t('click_to_lock')}
-                        >
-                          {emp.fullName}
-                        </span>
-                      ) : (
-                        <span>{emp.fullName}</span>
-                      )}
-                      
-                      {emp.isLocked && (
-                        <button 
-                          onClick={() => handleToggleLock(emp.employeeCode, emp.isLocked)} 
-                          className="p-1 hover:bg-red-100 rounded-full text-red-600 transition-colors cursor-pointer" 
-                          title={t('click_to_unlock')}
-                        >
-                          <Lock className="w-4 h-4" />
-                        </button>
-                      )}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className={cn("flex items-center gap-3", emp.isLocked ? "text-red-600" : "text-gray-900")}>
+                        <div className="w-8 h-8 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {emp.photoUrl ? (
+                            <img src={emp.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
+                          ) : (
+                            <User className="w-4 h-4 text-gray-400" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 font-medium text-sm">
+                          {!emp.isLocked ? (
+                            <span 
+                              onClick={() => setLockEmpModal({ show: true, employeeCode: emp.employeeCode, employeeName: emp.fullName, note: '' })}
+                              className="cursor-pointer hover:text-blue-600 hover:underline transition-colors"
+                              title={t('click_to_lock')}
+                            >
+                              {emp.fullName}
+                            </span>
+                          ) : (
+                            <span>{emp.fullName}</span>
+                          )}
+                          
+                          {emp.isLocked && (
+                            <button 
+                              onClick={() => handleToggleLock(emp.employeeCode, emp.isLocked)} 
+                              className="p-1 hover:bg-red-100 rounded-full text-red-600 transition-colors cursor-pointer" 
+                              title={t('click_to_unlock')}
+                            >
+                              <Lock className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                        {emp.position ? <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{emp.position}</span> : <span className="text-gray-400 italic">{t('employee')}</span>}

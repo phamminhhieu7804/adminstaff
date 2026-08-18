@@ -149,28 +149,30 @@ export default function FaceCaptureModal({ isOpen, onClose, onCapture, employeeN
               <p className="text-xs text-gray-400 mt-2">Lần đầu có thể mất vài giây</p>
             </div>
           ) : (
-            <div className="relative rounded-xl overflow-hidden border-4 border-gray-800 shadow-2xl flex items-center justify-center min-h-[360px]">
-              <video 
-                ref={videoRef} 
-                autoPlay 
-                muted 
-                onLoadedMetadata={handleVideoPlay}
-                className="object-cover bg-black"
-                style={{ transform: 'scaleX(-1)', maxWidth: '100%', maxHeight: '400px' }}
-              />
-              <canvas 
-                ref={canvasRef} 
-                className="absolute top-0 left-0"
-                style={{ transform: 'scaleX(-1)' }}
-              />
-              
-              {!faceDetected && (
-                <div className="absolute inset-0 border-4 border-dashed border-red-500/50 flex items-center justify-center pointer-events-none">
-                  <span className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">
-                    Không thấy khuôn mặt
-                  </span>
-                </div>
-              )}
+            <div className="rounded-xl overflow-hidden border-4 border-gray-800 shadow-2xl flex items-center justify-center min-h-[360px] bg-black">
+              <div className="relative inline-block">
+                <video 
+                  ref={videoRef} 
+                  autoPlay 
+                  muted 
+                  onLoadedMetadata={handleVideoPlay}
+                  className="block"
+                  style={{ transform: 'scaleX(-1)', maxWidth: '100%', maxHeight: '400px' }}
+                />
+                <canvas 
+                  ref={canvasRef} 
+                  className="absolute top-0 left-0 w-full h-full"
+                  style={{ transform: 'scaleX(-1)' }}
+                />
+                
+                {!faceDetected && (
+                  <div className="absolute inset-0 border-4 border-dashed border-red-500/50 flex items-center justify-center pointer-events-none">
+                    <span className="bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                      Không thấy khuôn mặt
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
