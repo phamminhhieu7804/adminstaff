@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, doc, getDoc, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './lib/firebase';
 import { createOrder } from './lib/api';
-import { Store, ArrowRight, Lock, Phone, Mail, MessageCircle, UserPlus, PackageSearch, Loader2, QrCode, CheckCircle2, ChevronLeft, Crown } from 'lucide-react';
+import { Store, ArrowRight, Lock, Phone, Mail, MessageCircle, UserPlus, PackageSearch, Loader2, QrCode, CheckCircle2, ChevronLeft, Crown, Globe } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'packages' | 'payment'
@@ -10,6 +11,10 @@ export default function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  const { t, i18n } = useTranslation();
+  
+  
   
   const [packages, setPackages] = useState([]);
   const [contactInfo, setContactInfo] = useState(null);
@@ -187,14 +192,31 @@ export default function Login({ onLogin }) {
     }
   };
 
+  const toggleLanguage = () => {
+    const newLang = i18n.language === 'vi' ? 'en' : 'vi';
+    i18n.changeLanguage(newLang);
+    localStorage.setItem('i18nextLng', newLang);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4 relative">
+      {/* Language Toggle */}
+      <div className="absolute top-4 right-4 z-10">
+        <button
+          onClick={toggleLanguage}
+          className="flex items-center gap-2 bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md px-4 py-2 rounded-full text-gray-700 font-semibold transition-all hover:scale-105 active:scale-95 border border-gray-200"
+        >
+          <Globe className="w-5 h-5 text-blue-600" />
+          {i18n.language === 'vi' ? 'EN' : 'VI'}
+        </button>
+      </div>
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="mx-auto w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/30">
           <Store className="w-8 h-8 text-white" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 tracking-tight">
-          {mode === 'login' ? 'Đăng nhập Quản lý' : 
+          {mode === 'login' ? t('login') : 
            mode === 'register' ? 'Đăng ký Tài khoản' : 
            mode === 'packages' ? 'Chọn Gói Cước' : 'Thanh toán'}
         </h2>
@@ -215,24 +237,24 @@ export default function Login({ onLogin }) {
           <div className="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
             <form className="space-y-6" onSubmit={mode === 'login' ? handleLoginSubmit : handleRegisterSubmit}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tên đăng nhập</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t('username')}</label>
                 <input
                   type="text"
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  placeholder="Nhập tên đăng nhập..."
+                  placeholder={t('usernamePlaceholder')}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Mật khẩu</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t('password')}</label>
                 <input
                   type="password"
                   required
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                  placeholder="Nhập mật khẩu..."
+                  placeholder={t('passwordPlaceholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -250,9 +272,9 @@ export default function Login({ onLogin }) {
                   disabled={isLoading}
                   className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50"
                 >
-                  {isLoading ? 'Đang xử lý...' : (
+                  {isLoading ? t('processing') : (
                     <>
-                       {mode === 'login' ? 'Đăng Nhập' : 'Đăng Ký Tài Khoản'} 
+                       {mode === 'login' ? t('loginButton') : t('registerButton')} 
                        <ArrowRight className="w-4 h-4" />
                     </>
                   )}

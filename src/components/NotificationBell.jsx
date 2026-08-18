@@ -6,8 +6,10 @@ import { Bell, CheckCircle2, XCircle, FileText } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { useStore } from '../StoreContext';
 
 export default function NotificationBell({ setActiveTab, isMobile = false, onCountChange }) {
+  const { storeId } = useStore();
   const [isOpen, setIsOpen] = useState(false);
   const [requests, setRequests] = useState([]);
   const { showToast } = useUI();
@@ -25,7 +27,7 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
   useEffect(() => {
     // Fetch pending leave_requests
     const qLeave = query(
-      collection(db, 'leave_requests'),
+      collection(db, 'stores', storeId, 'leave_requests'),
       where('status', '==', 'pending')
     );
     const unsubLeave = onSnapshot(qLeave, (snap) => {
@@ -38,7 +40,7 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
 
     // Fetch pending advance_requests
     const qAdvance = query(
-      collection(db, 'advance_requests'),
+      collection(db, 'stores', storeId, 'advance_requests'),
       where('status', '==', 'pending')
     );
     const unsubAdvance = onSnapshot(qAdvance, (snap) => {
@@ -51,7 +53,7 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
 
     // Fetch locked employees who submitted an appeal
     const qLocked = query(
-      collection(db, 'employees'),
+      collection(db, 'stores', storeId, 'employees'),
       where('unlockRequested', '==', true)
     );
     const unsubLocked = onSnapshot(qLocked, (snap) => {
@@ -72,7 +74,7 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
 
     // Fetch pending checkout photos
     const qPhotos = query(
-      collection(db, 'checkout_photos'),
+      collection(db, 'stores', storeId, 'checkout_photos'),
       where('status', '==', 'pending')
     );
     const unsubPhotos = onSnapshot(qPhotos, (snap) => {
@@ -129,9 +131,9 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
     try {
       if (req.reqType === 'unlock_request') {
         if (type === 'approved') {
-          await updateDoc(doc(db, 'employees', req.id), { isLocked: false });
+          await updateDoc(doc(db, 'stores', storeId, 'employees', req.id), { isLocked: false });
           // Optional: Add notification
-          await addDoc(collection(db, 'notifications'), {
+          await addDoc(collection(db, 'stores', storeId, 'notifications'), {
             employeeCode: req.employeeCode,
             type: 'unlock_approved',
             title: `Mở khóa tài khoản`,
@@ -144,12 +146,12 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
         return; // Rejecting unlock request might just do nothing, or we just don't show the reject button
       }
 
-      await updateDoc(doc(db, req.reqType, req.id), { status: type });
+      await updateDoc(doc(db, 'stores', storeId, req.reqType, req.id), { status: type });
       
       const reqName = req.reqType === 'leave_requests' ? 'Xin Nghỉ Phép' : 'Xin Ứng Tiền';
       const statusName = type === 'approved' ? 'được duyệt' : 'bị từ chối';
       
-      await addDoc(collection(db, 'notifications'), {
+      await addDoc(collection(db, 'stores', storeId, 'notifications'), {
         employeeCode: req.employeeCode,
         type: type === 'approved' ? 'request_approved' : 'request_rejected',
         title: `Đơn ${reqName} ${statusName}`,

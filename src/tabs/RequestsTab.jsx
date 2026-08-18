@@ -4,8 +4,10 @@ import { useUI } from '../contexts/UIContext';
 import { db } from '../lib/firebase';
 import { FileText, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { format } from 'date-fns';
+import { useStore } from '../StoreContext';
 
 export default function RequestsTab() {
+  const { storeId } = useStore();
   const [activeSubTab, setActiveSubTab] = useState('leave'); // 'leave' or 'advance'
   const [leaveReqs, setLeaveReqs] = useState([]);
   const [advanceReqs, setAdvanceReqs] = useState([]);
@@ -20,13 +22,13 @@ export default function RequestsTab() {
   const fetchRequests = async () => {
     setIsLoading(true);
     try {
-      const leaveSnap = await getDocs(query(collection(db, 'leave_requests'), orderBy('createdAt', 'desc')));
+      const leaveSnap = await getDocs(query(collection(db, 'stores', storeId, 'leave_requests'), orderBy('createdAt', 'desc')));
       setLeaveReqs(leaveSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       
-      const advanceSnap = await getDocs(query(collection(db, 'advance_requests'), orderBy('createdAt', 'desc')));
+      const advanceSnap = await getDocs(query(collection(db, 'stores', storeId, 'advance_requests'), orderBy('createdAt', 'desc')));
       setAdvanceReqs(advanceSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       
-      const unlockSnap = await getDocs(query(collection(db, 'employees'), where('unlockRequested', '==', true)));
+      const unlockSnap = await getDocs(query(collection(db, 'stores', storeId, 'employees'), where('unlockRequested', '==', true)));
       setUnlockReqs(unlockSnap.docs.map(d => ({ id: d.id, ...d.data(), reqType: 'employees' })));
     } catch (error) {
       console.error("Error fetching requests:", error);
@@ -48,8 +50,8 @@ export default function RequestsTab() {
     try {
       if (actionModal.reqType === 'employees') {
         if (actionModal.type === 'approved') {
-          await updateDoc(doc(db, 'employees', actionModal.req.id), { isLocked: false, unlockRequested: false, adminReply: null });
-          await addDoc(collection(db, 'notifications'), {
+          await updateDoc(doc(db, 'stores', storeId, 'employees', actionModal.req.id), { isLocked: false, unlockRequested: false, adminReply: null });
+          await addDoc(collection(db, 'stores', storeId, 'notifications'), {
             employeeCode: actionModal.req.employeeCode,
             type: 'unlock_approved',
             title: `Mở khóa tài khoản`,
@@ -59,7 +61,7 @@ export default function RequestsTab() {
             timestamp: serverTimestamp()
           });
         } else if (actionModal.type === 'rejected') {
-          await updateDoc(doc(db, 'employees', actionModal.req.id), { unlockRequested: false, adminReply: adminNote });
+          await updateDoc(doc(db, 'stores', storeId, 'employees', actionModal.req.id), { unlockRequested: false, adminReply: adminNote });
         }
       } else {
         await updateDoc(doc(db, actionModal.reqType, actionModal.req.id), { 
@@ -70,7 +72,7 @@ export default function RequestsTab() {
         const reqName = actionModal.reqType === 'leave_requests' ? 'Xin Nghỉ Phép' : 'Xin Ứng Tiền';
         const statusName = actionModal.type === 'approved' ? 'được duyệt' : 'bị từ chối';
         
-        await addDoc(collection(db, 'notifications'), {
+        await addDoc(collection(db, 'stores', storeId, 'notifications'), {
           employeeCode: actionModal.req.employeeCode,
           type: actionModal.type === 'approved' ? 'request_approved' : 'request_rejected',
           title: `Đơn ${reqName} ${statusName}`,

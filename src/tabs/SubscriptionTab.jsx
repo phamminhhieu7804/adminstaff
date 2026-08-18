@@ -16,6 +16,7 @@ const parseDate = (val) => {
 };
 
 export default function SubscriptionTab() {
+  const { storeId } = useStore();
   const { storeData, setStoreData } = useStore();
   const { showToast } = useUI();
   const [packages, setPackages] = useState([]);
@@ -35,6 +36,56 @@ export default function SubscriptionTab() {
   const [discountCode, setDiscountCode] = useState('');
   const [timeLeft, setTimeLeft] = useState(15 * 60);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  
+  // States cho Sub-tabs
+  const [activeSubTab, setActiveSubTab] = useState('packages'); // 'packages' | 'history'
+  const [historyData, setHistoryData] = useState([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
+  // Fetch History
+  useEffect(() => {
+    if (activeSubTab !== 'history') return;
+    const fetchHistory = async () => {
+      setIsHistoryLoading(true);
+      try {
+        const qOrders = query(collection(db, 'orders'), where('storeId', '==', storeData.id), where('status', '==', 'SUCCESS'));
+        const snapOrders = await getDocs(qOrders);
+        const orderHistory = snapOrders.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            type: 'Thanh toán QR (SePay)',
+            packageName: data.planName || data.packageType || 'Gia hạn phần mềm',
+            price: data.amount || 0,
+            durationDays: data.durationDays || 0,
+            date: parseDate(data.updatedAt || data.createdAt)
+          };
+        });
+
+        const qKeys = query(collection(db, 'subscription_history'), where('storeId', '==', storeData.id));
+        const snapKeys = await getDocs(qKeys);
+        const keyHistory = snapKeys.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            type: 'Nhập Mã (Key)',
+            packageName: data.packageName || 'Kích hoạt bằng Key',
+            price: data.price || 0,
+            durationDays: data.durationDays || 0,
+            date: parseDate(data.createdAt)
+          };
+        });
+
+        const combined = [...orderHistory, ...keyHistory].sort((a, b) => b.date - a.date);
+        setHistoryData(combined);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setIsHistoryLoading(false);
+      }
+    };
+    fetchHistory();
+  }, [activeSubTab, storeData.id]);
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
@@ -50,7 +101,7 @@ export default function SubscriptionTab() {
         }, 1000);
         return () => clearInterval(timer);
       } else {
-        alert("Mã thanh toán đã hết hạn. Vui lòng chọn lại gói cước.");
+        showToast("Mã thanh toán đã hết hạn. Vui lòng chọn lại gói cước.", "error");
         setSelectedBuyPackage(null);
       }
     }
@@ -347,7 +398,25 @@ export default function SubscriptionTab() {
         </div>
       </div>
 
-      {/* Activation Card */}
+      {/* Tab Navigation */}
+      <div className="flex gap-6 border-b border-gray-200 mb-6">
+        <button 
+          onClick={() => setActiveSubTab('packages')}
+          className={`pb-3 px-2 font-bold text-[15px] transition-colors border-b-2 ${activeSubTab === 'packages' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+        >
+          Mua Gói Cước
+        </button>
+        <button 
+          onClick={() => setActiveSubTab('history')}
+          className={`pb-3 px-2 font-bold text-[15px] transition-colors border-b-2 ${activeSubTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+        >
+          Lịch sử giao dịch & Mã đã dùng
+        </button>
+      </div>
+
+      {activeSubTab === 'packages' && (
+        <div className="space-y-6">
+          {/* Activation Card */}
       <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
          <h3 className="text-lg font-bold text-gray-900 mb-2">Nhập Mã Kích Hoạt</h3>
          <p className="text-sm text-gray-500 mb-4">Nhập mã (Key) bạn được cung cấp để tự động gia hạn phần mềm.</p>
@@ -411,6 +480,46 @@ export default function SubscriptionTab() {
             })}
          </div>
       </div>
+        </div>
+      )}
+
+      {activeSubTab === 'history' && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+           <h3 className="text-lg font-bold text-gray-900 mb-4">Lịch sử Giao dịch</h3>
+           {isHistoryLoading ? (
+             <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+           ) : historyData.length === 0 ? (
+             <div className="text-center p-8 text-gray-500 bg-gray-50 rounded-xl border border-gray-100">Chưa có giao dịch hoặc mã kích hoạt nào.</div>
+           ) : (
+             <div className="overflow-x-auto">
+               <table className="w-full text-left border-collapse whitespace-nowrap">
+                 <thead>
+                   <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
+                     <th className="p-3 font-bold">Thời gian</th>
+                     <th className="p-3 font-bold">Hình thức</th>
+                     <th className="p-3 font-bold">Nội dung / Gói cước</th>
+                     <th className="p-3 font-bold">Cộng thêm</th>
+                     <th className="p-3 font-bold text-right">Số tiền</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-gray-100 text-sm">
+                   {historyData.map(item => (
+                     <tr key={item.id} className="hover:bg-blue-50/50 transition-colors">
+                       <td className="p-3 text-gray-600">{format(item.date, 'dd/MM/yyyy HH:mm')}</td>
+                       <td className="p-3 font-bold text-gray-700">{item.type}</td>
+                       <td className="p-3 text-gray-900">{item.packageName}</td>
+                       <td className="p-3 font-black text-green-600">+{item.durationDays} ngày</td>
+                       <td className="p-3 text-right font-black text-blue-600">
+                         {item.price > 0 ? `${new Intl.NumberFormat('vi-VN').format(item.price)}đ` : 'Miễn phí'}
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+           )}
+        </div>
+      )}
 
       {/* Conversion Popup */}
       {conversionPopup && (

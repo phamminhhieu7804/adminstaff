@@ -31,7 +31,7 @@ export default function PayrollTab() {
     if (!storeId) return;
     const fetchEmployees = async () => {
       try {
-        const querySnapshot = await getDocs(query(collection(db, 'employees'), where('storeId', '==', storeId)));
+        const querySnapshot = await getDocs(query(collection(db, 'stores', storeId, 'employees')));
         const empList = querySnapshot.docs.map(d => ({
           employeeCode: d.id,
           ...d.data()
@@ -57,7 +57,7 @@ export default function PayrollTab() {
         const period = currentPeriod;
         
         // 1. Fetch attendance
-        const logsSnapshot = await getDocs(query(collection(db, 'attendance_logs'), where('storeId', '==', storeId)));
+        const logsSnapshot = await getDocs(query(collection(db, 'stores', storeId, 'attendance_logs')));
         const validLogs = [];
         logsSnapshot.forEach(doc => {
           const data = doc.data();
@@ -72,7 +72,7 @@ export default function PayrollTab() {
         });
         
         // 2. Fetch advance requests
-        const advanceSnap = await getDocs(query(collection(db, 'advance_requests'), where('storeId', '==', storeId)));
+        const advanceSnap = await getDocs(query(collection(db, 'stores', storeId, 'advance_requests')));
         const approvedAdvances = {};
         advanceSnap.forEach(doc => {
           const data = doc.data();
@@ -85,7 +85,7 @@ export default function PayrollTab() {
         });
         
         // 3. Fetch payslips status (bonus, deduction, isPaid)
-        const payslipsSnap = await getDocs(query(collection(db, 'payslips'), where('storeId', '==', storeId), where('period', '==', period)));
+        const payslipsSnap = await getDocs(query(collection(db, 'stores', storeId, 'payslips'), where('period', '==', period)));
         const payslipsDict = {};
         payslipsSnap.forEach(doc => {
           payslipsDict[doc.data().employeeCode] = doc.data();
@@ -186,7 +186,7 @@ export default function PayrollTab() {
   // Realtime payslips listener
   useEffect(() => {
     if (!storeId || !currentPeriod) return;
-    const q = query(collection(db, 'payslips'), where('storeId', '==', storeId), where('period', '==', currentPeriod));
+    const q = query(collection(db, 'stores', storeId, 'payslips'), where('period', '==', currentPeriod));
     const unsub = onSnapshot(q, (snap) => {
       const dict = {};
       snap.forEach(d => { dict[d.data().employeeCode] = d.data(); });
@@ -250,8 +250,8 @@ export default function PayrollTab() {
         try {
           // 1. Mark all payslips for currentPeriod as notified
           for (const emp of payrollData) {
-            const docId = `${storeId}_${emp.employeeCode}_${currentPeriod}`;
-            await setDoc(doc(db, 'payslips', docId), {
+            const docId = `${emp.employeeCode}_${currentPeriod}`;
+            await setDoc(doc(db, 'stores', storeId, 'payslips', docId), {
               storeId,
               employeeCode: emp.employeeCode,
               period: currentPeriod,
@@ -262,7 +262,7 @@ export default function PayrollTab() {
             }, { merge: true });
             
             // 2. Send notification to each
-            await addDoc(collection(db, 'notifications'), {
+            await addDoc(collection(db, 'stores', storeId, 'notifications'), {
               employeeCode: emp.employeeCode,
               title: 'Nhận Lương',
               message: `Lương tháng ${currentPeriod} đã sẵn sàng. Vui lòng vào Phiếu Lương để xác nhận sau khi đã nhận tiền.`,
@@ -296,8 +296,8 @@ export default function PayrollTab() {
         try {
           for (const emp of payrollData) {
             if (!emp.isPaid) {
-              const docId = `${storeId}_${emp.employeeCode}_${currentPeriod}`;
-              await setDoc(doc(db, 'payslips', docId), {
+              const docId = `${emp.employeeCode}_${currentPeriod}`;
+              await setDoc(doc(db, 'stores', storeId, 'payslips', docId), {
                 isPaid: true,
                 isConfirmedByAdmin: true,
                 updatedAt: new Date().toISOString()

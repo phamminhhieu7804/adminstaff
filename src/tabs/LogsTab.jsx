@@ -4,8 +4,10 @@ import { db } from '../lib/firebase';
 import { Search, Calendar, Filter, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
+import { useStore } from '../StoreContext';
 
 export default function LogsTab() {
+  const { storeId } = useStore();
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -22,7 +24,7 @@ export default function LogsTab() {
     try {
       // Assuming logs are stored with a timestamp field, if not, orderBy might fail without index
       // We will just fetch all and sort client-side if needed, but query is better.
-      const q = query(collection(db, 'attendance_logs'));
+      const q = query(collection(db, 'stores', storeId, 'attendance_logs'));
       const querySnapshot = await getDocs(q);
       
       const logsData = querySnapshot.docs.map(doc => {

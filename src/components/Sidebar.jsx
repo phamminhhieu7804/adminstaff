@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Users, ClipboardList, Calculator, Menu, Clock, FileText, ShieldCheck, LogOut, Camera, Lock, Crown, Phone, Mail } from 'lucide-react';
+import { Settings, Users, ClipboardList, Calculator, Menu, Clock, FileText, ShieldCheck, LogOut, Camera, Lock, Crown, Phone, Mail, UtensilsCrossed, Grid2X2, History, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { useTranslation } from 'react-i18next';
 
-export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pendingCount, onLogout, packageType, storeId }) {
+export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pendingCount, photoPendingCount, onLogout, packageType, storeId }) {
   const isPro = packageType === 'Pro';
   const [contactInfo, setContactInfo] = useState(null);
 
@@ -18,18 +19,30 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pe
     fetchContact();
   }, []);
 
+  const { t, i18n } = useTranslation();
+
+  const toggleLanguage = () => {
+    const newLang = i18n.language === 'vi' ? 'en' : 'vi';
+    i18n.changeLanguage(newLang);
+    localStorage.setItem('i18nextLng', newLang);
+  };
+
   const lockedTabs = ['requests', 'payroll', 'shifts'];
 
   const navItems = [
-    { id: 'settings', label: 'Cấu Hình Cửa Hàng', icon: Settings },
-    { id: 'employees', label: 'Quản Lý Nhân Sự', icon: Users },
-    { id: 'shifts', label: 'Quản Lý Ca Làm', icon: Clock },
-    { id: 'status', label: 'Trạng Thái', icon: Users },
-    { id: 'logs', label: 'Theo Dõi Chấm Công', icon: ClipboardList },
-    { id: 'photos', label: 'Duyệt ảnh Check-out', icon: Camera },
-    { id: 'requests', label: 'Quản Lý Yêu Cầu', icon: FileText },
-    { id: 'payroll', label: 'Tính Lương & Báo Cáo', icon: Calculator },
-    { id: 'subscription', label: 'Thông tin Phần mềm', icon: ShieldCheck },
+    { id: 'settings', label: t('nav.settings'), icon: Settings },
+    { id: 'employees', label: t('nav.employees'), icon: Users },
+    { id: 'shifts', label: t('nav.shifts'), icon: Clock },
+    { id: 'status', label: t('nav.status'), icon: Users },
+    { id: 'menu', label: 'Thực đơn', icon: UtensilsCrossed },
+    { id: 'tables', label: 'Bàn', icon: Grid2X2 },
+    { id: 'history', label: 'Lịch sử & Doanh thu', icon: History },
+    { id: 'audit_logs', label: 'Lịch sử Thao tác', icon: ClipboardList },
+    { id: 'logs', label: t('nav.logs'), icon: FileText },
+    { id: 'photos', label: t('nav.photos'), icon: Camera },
+    { id: 'requests', label: t('nav.requests'), icon: FileText },
+    { id: 'payroll', label: t('nav.payroll'), icon: Calculator },
+    { id: 'subscription', label: t('nav.subscription'), icon: ShieldCheck },
   ];
 
   const handleTabClick = (itemId) => {
@@ -103,6 +116,11 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pe
                        {pendingCount}
                      </span>
                   )}
+                  {item.id === 'photos' && photoPendingCount > 0 && (
+                     <span className="ml-auto flex-shrink-0 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                       {photoPendingCount}
+                     </span>
+                  )}
                 </button>
               );
             })}
@@ -125,15 +143,25 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pe
           )}
         </div>
 
-        <div className="p-4 border-t border-gray-200">
-          <button 
-            onClick={onLogout}
-            className={cn(
-              "flex items-center justify-center gap-2 w-full px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors text-red-600 bg-red-50 hover:bg-red-100"
-            )}
+        <div className="px-4 py-2 border-t border-gray-200">
+          <button
+            onClick={toggleLanguage}
+            className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-gray-700 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors mb-2"
           >
-            <LogOut className="w-5 h-5" />
-            Đăng xuất
+            <div className="flex items-center gap-3">
+              <Globe className="w-5 h-5 text-blue-600" />
+              <span>Ngôn ngữ / Language</span>
+            </div>
+            <span className="font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+              {i18n.language === 'vi' ? 'VI' : 'EN'}
+            </span>
+          </button>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+          >
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            <span className="truncate">{t('logout')}</span>
           </button>
         </div>
       </div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, getDocs, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
-import { Menu, LogOut, PackageSearch, AlertTriangle, Clock } from 'lucide-react';
+import { createOrder } from './lib/api';
+import { Menu, LogOut, PackageSearch, AlertTriangle, Clock, Crown, QrCode, CheckCircle2, ChevronLeft, Loader2, Key, Phone, MessageCircle } from 'lucide-react';
 import { addDays, addHours, addMinutes, differenceInMilliseconds } from 'date-fns';
 import Sidebar from './components/Sidebar';
 import SettingsTab from './tabs/SettingsTab';
@@ -14,6 +15,10 @@ import StatusTab from './tabs/StatusTab';
 import SubscriptionTab from './tabs/SubscriptionTab';
 import PhotosTab from './tabs/PhotosTab';
 import NotificationBell from './components/NotificationBell';
+import MenuTab from './tabs/MenuTab';
+import TablesTab from './tabs/TablesTab';
+import HistoryTab from './tabs/HistoryTab';
+import AuditLogsTab from './tabs/AuditLogsTab';
 import Login from './Login';
 import { StoreProvider } from './StoreContext';
 import { UIProvider } from './contexts/UIContext';
@@ -46,6 +51,15 @@ function ExpiredScreen({ onLogout, storeData, setStoreData }) {
   const [isActivating, setIsActivating] = useState(false);
   const [message, setMessage] = useState('');
   
+  const [paymentState, setPaymentState] = useState('packages'); // 'packages' | 'payment' | 'success'
+  const [selectedBuyPackage, setSelectedBuyPackage] = useState(null);
+  const [orderCode, setOrderCode] = useState('');
+  const [qrUrl, setQrUrl] = useState('');
+  const [orderAmount, setOrderAmount] = useState(0);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(15 * 60);
+  const [orderErrorMsg, setOrderErrorMsg] = useState('');
+  
   useEffect(() => {
     const fetchPackages = async () => {
       const snap = await getDocs(collection(db, 'subscription_packages'));
@@ -56,6 +70,59 @@ function ExpiredScreen({ onLogout, storeData, setStoreData }) {
     };
     fetchPackages();
   }, []);
+
+  useEffect(() => {
+    if (paymentState === 'payment') {
+      if (timeLeft > 0) {
+        const timer = setInterval(() => {
+          setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+      } else {
+        setOrderErrorMsg("Mã thanh toán đã hết hạn. Vui lòng chọn lại gói cước.");
+        setPaymentState('packages');
+      }
+    }
+  }, [paymentState, timeLeft]);
+
+  const handleOpenPayment = async (pkg) => {
+    if (isCreatingOrder) return;
+    setIsCreatingOrder(true);
+    try {
+      const { success, orderCode: code, qrUrl: qr, amount, message } = await createOrder(storeData.id, pkg.id);
+      if (success) {
+        setOrderCode(code);
+        setQrUrl(qr);
+        setOrderAmount(amount);
+        setSelectedBuyPackage(pkg);
+        setPaymentState('payment');
+        setTimeLeft(15 * 60);
+      } else {
+        setOrderErrorMsg("Hệ thống không thể tạo đơn hàng lúc này. Vui lòng thử lại.");
+      }
+    } catch (err) {
+      console.error(err);
+      setOrderErrorMsg("Hệ thống không thể tạo đơn hàng lúc này. Vui lòng thử lại.");
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!orderCode || paymentState !== 'payment') return;
+    const unsub = onSnapshot(doc(db, 'orders', orderCode.toString()), async (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.status === 'SUCCESS') {
+           setPaymentState('success');
+           setTimeout(() => {
+             window.location.reload();
+           }, 2000);
+        }
+      }
+    });
+    return () => unsub();
+  }, [orderCode, paymentState, storeData.id, setStoreData]);
 
   const handleActivate = async () => {
     if (!activationKey.trim()) return;
@@ -117,7 +184,6 @@ function ExpiredScreen({ onLogout, storeData, setStoreData }) {
       });
 
       setStoreData(prev => ({ ...prev, expiresAt: newExpiry, packageType: keyType }));
-      // Component will unmount automatically because isExpired will become false
     } catch(e) {
       console.error(e);
       setMessage('Lỗi khi kích hoạt.');
@@ -125,63 +191,152 @@ function ExpiredScreen({ onLogout, storeData, setStoreData }) {
     }
   };
 
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 relative">
+       
+       {orderErrorMsg && (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+             <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl relative animate-in fade-in zoom-in duration-200">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                   <AlertTriangle className="w-8 h-8 text-red-600" />
+                </div>
+                <h3 className="text-xl font-black text-gray-900 mb-2">Đã xảy ra lỗi</h3>
+                <p className="text-gray-600 mb-6 text-sm">{orderErrorMsg}<br/>Vui lòng liên hệ trực tiếp với chúng tôi để được hỗ trợ thanh toán & gia hạn thủ công.</p>
+                {contactInfo && (
+                   <div className="bg-gray-50 rounded-xl p-4 mb-6 flex flex-col gap-3">
+                      {contactInfo.phone && <a href={`tel:${contactInfo.phone}`} className="font-bold text-blue-600 hover:underline flex items-center justify-center gap-2"><Phone className="w-4 h-4"/> SĐT: {contactInfo.phone}</a>}
+                      {contactInfo.zalo && <a href={contactInfo.zalo} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline flex items-center justify-center gap-2"><MessageCircle className="w-4 h-4"/> Zalo Hỗ Trợ</a>}
+                   </div>
+                )}
+                <button onClick={() => setOrderErrorMsg('')} className="w-full bg-gray-900 text-white font-bold py-3 px-4 rounded-xl hover:bg-black transition-colors">Đóng</button>
+             </div>
+          </div>
+       )}
+
        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-2xl w-full text-center border border-red-100">
-          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-             <AlertTriangle className="w-10 h-10 text-red-600" />
-          </div>
-          <h1 className="text-3xl font-black text-gray-900 mb-2">Tài khoản đã hết hạn</h1>
-          <p className="text-gray-600 mb-8">Phần mềm quản lý cửa hàng <b>{storeData.storeName}</b> đã hết thời hạn sử dụng. Vui lòng liên hệ nhà cung cấp hoặc chọn một trong các gói cước dưới đây để gia hạn.</p>
           
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-             {packages.map(pkg => (
-                <div key={pkg.id} className="border border-gray-200 rounded-xl p-4 text-center">
-                   <PackageSearch className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                   <h3 className="font-bold text-gray-900">{pkg.name}</h3>
-                   <p className="text-sm text-gray-500 mb-2">{pkg.durationDays} ngày</p>
-                   <p className="font-black text-blue-600">{new Intl.NumberFormat('vi-VN').format(pkg.price)}đ</p>
-                </div>
-             ))}
-          </div>
+          {paymentState === 'success' ? (
+            <div className="py-8">
+              <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto mb-6" />
+              <h2 className="text-3xl font-black text-gray-900 mb-4">Gia hạn thành công!</h2>
+              <p className="text-gray-600 mb-8">Cảm ơn bạn. Tài khoản của bạn đã được gia hạn và có thể tiếp tục sử dụng phần mềm.</p>
+              <div className="flex justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              </div>
+            </div>
+          ) : paymentState === 'payment' ? (
+            <div>
+              <button 
+                 onClick={() => setPaymentState('packages')} 
+                 className="flex items-center gap-2 text-gray-500 hover:text-gray-700 font-bold mb-6 transition-colors"
+              >
+                 <ChevronLeft className="w-5 h-5" /> Trở lại bảng giá
+              </button>
+              
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                 <QrCode className="w-8 h-8 text-blue-600" />
+              </div>
+              <h2 className="text-2xl font-black text-gray-900 mb-2">Thanh toán qua quét mã QR</h2>
+              <p className="text-gray-600 mb-6">Mở ứng dụng ngân hàng và quét mã để thanh toán. Hệ thống sẽ tự động xác nhận.</p>
+              
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center max-w-sm mx-auto shadow-inner relative">
+                 {qrUrl ? (
+                    <img src={qrUrl} alt="QR Code" className="w-64 h-64 object-contain mb-4 rounded-xl border border-gray-200 shadow-sm" />
+                 ) : (
+                    <div className="w-64 h-64 flex items-center justify-center mb-4">
+                      <Loader2 className="w-10 h-10 animate-spin text-gray-400" />
+                    </div>
+                 )}
+                 <div className="w-full text-center bg-white p-4 rounded-xl border border-blue-100">
+                    <p className="text-sm text-gray-500 mb-1">Số tiền thanh toán</p>
+                    <p className="text-3xl font-black text-blue-600">{new Intl.NumberFormat('vi-VN').format(orderAmount)}<span className="text-xl">đ</span></p>
+                 </div>
+                 <div className="mt-4 flex items-center justify-center gap-2 text-sm font-bold text-gray-500">
+                   <Clock className="w-4 h-4" /> Thời gian còn lại: <span className="text-red-500">{formatTime(timeLeft)}</span>
+                 </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                 <AlertTriangle className="w-10 h-10 text-red-600" />
+              </div>
+              <h1 className="text-3xl font-black text-gray-900 mb-2">Tài khoản đã hết hạn</h1>
+              <p className="text-gray-600 mb-8">Phần mềm quản lý cửa hàng <b>{storeData.storeName}</b> đã hết thời hạn sử dụng. Vui lòng liên hệ nhà cung cấp hoặc chọn một trong các gói cước dưới đây để gia hạn.</p>
+              
+              <div className="grid grid-cols-2 gap-3 mb-8">
+                 {packages.map(pkg => {
+                    const isPro = pkg.type === 'Pro';
+                    return (
+                       <div 
+                          key={pkg.id} 
+                          onClick={() => handleOpenPayment(pkg)}
+                          className={`border-2 rounded-xl p-4 cursor-pointer transition-all text-center group flex flex-col justify-center items-center ${isPro ? 'border-amber-200 bg-amber-50/50 hover:border-amber-500 hover:bg-amber-100' : 'border-blue-100 bg-blue-50/50 hover:border-blue-500 hover:bg-blue-100'}`}
+                       >
+                          {isPro ? <Crown className={`w-8 h-8 mb-2 ${isPro ? 'text-amber-500 group-hover:text-amber-600' : ''}`} /> : <PackageSearch className="w-8 h-8 text-blue-500 group-hover:text-blue-600 mb-2" />}
+                          <p className={`font-bold text-lg mb-1 ${isPro ? 'text-gray-900 group-hover:text-amber-800' : 'text-gray-900 group-hover:text-blue-800'}`}>{pkg.name}</p>
+                          <span className={`text-[12px] font-bold px-3 py-0.5 rounded-full mb-3 ${isPro ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
+                             {isPro ? 'Pro' : 'Thường'}
+                          </span>
+                          <p className="text-sm text-gray-500 mb-2">
+                             {pkg.durationValue || pkg.durationDays} {(pkg.durationUnit || 'days') === 'days' ? 'ngày' : pkg.durationUnit === 'hours' ? 'giờ' : 'phút'}
+                          </p>
+                          <p className={`font-black text-xl mt-1 ${isPro ? 'text-blue-600' : 'text-blue-600'}`}>{new Intl.NumberFormat('vi-VN').format(pkg.price)}đ</p>
+                       </div>
+                    );
+                 })}
+              </div>
 
-          {/* Activation Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8 text-left">
-             <h3 className="font-bold text-gray-900 mb-2">Bạn đã có Mã kích hoạt (Key)?</h3>
-             <div className="flex gap-2">
-                <input
-                   type="text"
-                   placeholder="Nhập mã KEY..."
-                   value={activationKey}
-                   onChange={(e) => setActivationKey(e.target.value.toUpperCase())}
-                   className="flex-1 px-4 py-3 rounded-xl border border-blue-200 outline-none focus:border-blue-500 font-mono font-bold"
-                />
-                <button
-                   onClick={handleActivate}
-                   disabled={isActivating || !activationKey}
-                   className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap"
-                >
-                   {isActivating ? 'Đang kích hoạt...' : 'Kích Hoạt'}
-                </button>
-             </div>
-             {message && <p className="text-sm font-medium text-red-600 mt-2">{message}</p>}
-          </div>
+            </>
+          )}
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-             <button onClick={onLogout} className="flex items-center justify-center gap-2 text-gray-600 bg-gray-100 px-6 py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors w-full sm:w-auto">
-               <LogOut className="w-5 h-5" /> Đăng xuất
-             </button>
-          </div>
-          
-          {contactInfo && (
-             <div className="mt-8 pt-8 border-t border-gray-100 text-sm text-gray-600">
-                <p className="mb-2 font-medium">Hoặc liên hệ với chúng tôi qua:</p>
-                <div className="flex flex-wrap justify-center gap-4">
-                   {contactInfo.phone && <a href={`tel:${contactInfo.phone}`} className="font-bold text-blue-600 hover:underline">SĐT: {contactInfo.phone}</a>}
-                   {contactInfo.zalo && <a href={contactInfo.zalo} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">Zalo / Fanpage</a>}
-                   {contactInfo.email && <a href={`mailto:${contactInfo.email}`} className="font-bold text-blue-600 hover:underline">Email: {contactInfo.email}</a>}
-                </div>
-             </div>
+          {paymentState === 'packages' && (
+            <>
+              {/* Activation Box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8 text-left">
+                 <h3 className="font-bold text-gray-900 mb-2">Bạn đã có Mã kích hoạt (Key)?</h3>
+                 <div className="flex gap-2">
+                    <input
+                       type="text"
+                       placeholder="Nhập mã KEY..."
+                       value={activationKey}
+                       onChange={(e) => setActivationKey(e.target.value.toUpperCase())}
+                       className="flex-1 px-4 py-3 rounded-xl border border-blue-200 outline-none focus:border-blue-500 font-mono font-bold"
+                    />
+                    <button
+                       onClick={handleActivate}
+                       disabled={isActivating || !activationKey}
+                       className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 whitespace-nowrap"
+                    >
+                       {isActivating ? 'Đang kích hoạt...' : 'Kích Hoạt'}
+                    </button>
+                 </div>
+                 {message && <p className={`text-sm font-medium mt-2 ${message.includes('không') || message.includes('Lỗi') ? 'text-red-600' : 'text-green-600'}`}>{message}</p>}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                 <button onClick={onLogout} className="flex items-center justify-center gap-2 text-gray-600 bg-gray-100 px-6 py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors w-full sm:w-auto">
+                   <LogOut className="w-5 h-5" /> Đăng xuất
+                 </button>
+              </div>
+              
+              {contactInfo && (
+                 <div className="mt-8 pt-8 border-t border-gray-100 text-sm text-gray-600">
+                    <p className="mb-2 font-medium">Hoặc liên hệ với chúng tôi qua:</p>
+                    <div className="flex flex-wrap justify-center gap-4">
+                       {contactInfo.phone && <a href={`tel:${contactInfo.phone}`} className="font-bold text-blue-600 hover:underline">SĐT: {contactInfo.phone}</a>}
+                       {contactInfo.zalo && <a href={contactInfo.zalo} target="_blank" rel="noreferrer" className="font-bold text-blue-600 hover:underline">Zalo / Fanpage</a>}
+                       {contactInfo.email && <a href={`mailto:${contactInfo.email}`} className="font-bold text-blue-600 hover:underline">Email: {contactInfo.email}</a>}
+                    </div>
+                 </div>
+              )}
+            </>
           )}
        </div>
     </div>
@@ -192,10 +347,24 @@ function MainApp({ storeData, onLogout }) {
   const [activeTab, setActiveTab] = useState('settings');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [photoPendingCount, setPhotoPendingCount] = useState(0);
   const [timeLeftStr, setTimeLeftStr] = useState('');
   const [isWarning, setIsWarning] = useState(false);
   const packageType = storeData?.packageType || 'Thường';
   const isPro = packageType === 'Pro';
+
+  // Listen for pending checkout photos count
+  useEffect(() => {
+    if (!storeData?.id) return;
+    const q = query(
+      collection(db, 'stores', storeData.id, 'checkout_photos'),
+      where('status', '==', 'pending')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setPhotoPendingCount(snap.size);
+    });
+    return () => unsub();
+  }, [storeData?.id]);
 
 
 
@@ -228,6 +397,10 @@ function MainApp({ storeData, onLogout }) {
       case 'employees': return <EmployeesTab />;
       case 'shifts': return <ShiftsTab />;
       case 'status': return <StatusTab />;
+      case 'menu': return <MenuTab />;
+      case 'tables': return <TablesTab />;
+      case 'history': return <HistoryTab />;
+      case 'audit_logs': return <AuditLogsTab />;
       case 'logs': return <LogsTab />;
       case 'requests': return <RequestsTab />;
       case 'payroll': return <PayrollTab />;
@@ -245,6 +418,7 @@ function MainApp({ storeData, onLogout }) {
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
         pendingCount={pendingRequests}
+        photoPendingCount={photoPendingCount}
         onLogout={onLogout}
         packageType={packageType}
         storeId={storeData?.id}
@@ -300,6 +474,14 @@ function App() {
   const [isExpired, setIsExpired] = useState(false);
   const [isBanned, setIsBanned] = useState(false);
 
+  const parseDate = (val) => {
+    if (!val) return new Date();
+    if (typeof val === 'object' && val.seconds) return new Date(val.seconds * 1000);
+    if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate();
+    const parsed = new Date(val);
+    return isNaN(parsed.getTime()) ? new Date() : parsed;
+  };
+
   // Sync with Firestore and interval check
   useEffect(() => {
     if (!storeData) return;
@@ -318,7 +500,7 @@ function App() {
 
     // Check expiry every second
     const interval = setInterval(() => {
-       const exp = storeData.expiresAt ? new Date(storeData.expiresAt) : new Date();
+       const exp = parseDate(storeData.expiresAt);
        setIsExpired(exp < new Date());
     }, 1000);
 

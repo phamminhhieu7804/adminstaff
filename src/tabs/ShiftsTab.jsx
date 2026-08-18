@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Plus, Edit2, Trash2, X, CheckCircle2, Clock, CalendarDays, ChevronLeft, ChevronRight, Lock, Unlock } from 'lucide-react';
@@ -6,8 +7,11 @@ import { cn } from '../lib/utils';
 import { startOfWeek, addDays, subDays, format, parseISO } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { useUI } from '../contexts/UIContext';
+import { useStore } from '../StoreContext';
 
 export default function ShiftsTab() {
+  const { storeId } = useStore();
+  const { t } = useTranslation();
   const [shifts, setShifts] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -30,11 +34,11 @@ export default function ShiftsTab() {
 
   // Fetch Core Data
   useEffect(() => {
-    const unShifts = onSnapshot(collection(db, 'shifts'), (snap) => {
+    const unShifts = onSnapshot(collection(db, 'stores', storeId, 'shifts'), (snap) => {
       setShifts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     
-    const unEmp = onSnapshot(collection(db, 'employees'), (snap) => {
+    const unEmp = onSnapshot(collection(db, 'stores', storeId, 'employees'), (snap) => {
       setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     
@@ -51,7 +55,7 @@ export default function ShiftsTab() {
     const startStr = format(currentWeek, 'yyyy-MM-dd');
     const endStr = format(addDays(currentWeek, 6), 'yyyy-MM-dd');
     
-    const q = query(collection(db, 'schedules'), where('date', '>=', startStr), where('date', '<=', endStr));
+    const q = query(collection(db, 'stores', storeId, 'schedules'), where('date', '>=', startStr), where('date', '<=', endStr));
     const unSchedules = onSnapshot(q, (snap) => {
       setSchedules(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -89,7 +93,7 @@ export default function ShiftsTab() {
     setIsSubmitting(true);
     try {
       const shiftId = modalMode === 'add' ? `shift_${Date.now()}` : formData.id;
-      const docRef = doc(db, 'shifts', shiftId);
+      const docRef = doc(db, 'stores', storeId, 'shifts', shiftId);
       
       await setDoc(docRef, {
         name: formData.name,
@@ -101,10 +105,10 @@ export default function ShiftsTab() {
         overtimeRate: formData.enableOvertime ? (Number(formData.overtimeRate) || 0) : 0
       });
       
-      showToast(modalMode === 'add' ? 'Thêm ca làm thành công!' : 'Cập nhật ca làm thành công!');
+      showToast(modalMode === 'add' ? t('shiftsTab.addSuccess') : t('shiftsTab.updateSuccess'));
       setIsModalOpen(false);
     } catch (error) {
-      showToast("Có lỗi xảy ra khi lưu thông tin.", "error");
+      showToast(t('shiftsTab.saveError'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -112,26 +116,26 @@ export default function ShiftsTab() {
 
   const handleDelete = (shiftId) => {
     showConfirm(
-      'Xóa ca làm',
-      'Bạn có chắc chắn muốn xóa ca làm này?',
+      t('shiftsTab.deleteShiftTitle'),
+      t('shiftsTab.deleteShiftConfirm'),
       async () => {
-        try { await deleteDoc(doc(db, 'shifts', shiftId)); showToast('Đã xóa ca làm.'); } 
-        catch (error) { showToast("Có lỗi xảy ra khi xóa.", "error"); }
+        try { await deleteDoc(doc(db, 'stores', storeId, 'shifts', shiftId)); showToast(t('shiftsTab.deleteShiftSuccess')); } 
+        catch (error) { showToast(t('shiftsTab.deleteError'), 'error'); }
       }
     );
   };
 
   const handleDeleteSchedule = (id) => {
     showConfirm(
-      'Xóa nhân viên khỏi ca',
-      'Bạn có chắc muốn xóa nhân viên khỏi ca này?',
+      t('shiftsTab.deleteEmpTitle'),
+      t('shiftsTab.deleteEmpConfirm'),
       async () => {
         try {
-          await deleteDoc(doc(db, 'schedules', id));
-          showToast('Đã xóa xếp ca.');
+          await deleteDoc(doc(db, 'stores', storeId, 'schedules', id));
+          showToast(t('shiftsTab.deleteEmpSuccess'));
         } catch (error) {
           console.error("Error deleting schedule: ", error);
-          showToast('Có lỗi xảy ra', 'error');
+          showToast(t('shiftsTab.error'), 'error');
         }
       }
     );
@@ -144,21 +148,21 @@ export default function ShiftsTab() {
     try {
       // 1. Delete schedule
       if (lockEmpModal.scheduleId) {
-        await deleteDoc(doc(db, 'schedules', lockEmpModal.scheduleId));
+        await deleteDoc(doc(db, 'stores', storeId, 'schedules', lockEmpModal.scheduleId));
       }
       
       // 2. Update employee to locked
-      await updateDoc(doc(db, 'employees', lockEmpModal.employeeCode), {
+      await updateDoc(doc(db, 'stores', storeId, 'employees', lockEmpModal.employeeCode), {
         isLocked: true,
         lockReason: lockEmpModal.note.trim()
       });
       
-      showToast('Đã xóa ca và khóa tài khoản nhân viên.');
+      showToast(t('shiftsTab.lockEmpSuccess'));
       setLockEmpModal({ show: false, scheduleId: null, employeeCode: '', employeeName: '', note: '' });
       // We don't close assignModal so they can see the person is removed
     } catch (err) {
       console.error(err);
-      showToast('Có lỗi xảy ra khi khóa.', 'error');
+      showToast(t('shiftsTab.lockEmpError'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -177,7 +181,7 @@ export default function ShiftsTab() {
       if (mode === 'manual') {
           return {
              isOpen: storeSettings.allowShiftRegistration,
-             label: storeSettings.allowShiftRegistration ? 'Đang Mở Đăng Ký Ca' : 'Đã Khóa Đăng Ký Ca'
+             label: storeSettings.allowShiftRegistration ? t('shiftsTab.regOpen') : t('shiftsTab.regClosed')
           };
       }
       
@@ -193,10 +197,10 @@ export default function ShiftsTab() {
           isOpen = currentDay >= openDay || currentDay <= closeDay;
       }
       
-      const dayNames = ['', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+      const dayNames = ['', t('shiftsTab.day2'), t('shiftsTab.day3'), t('shiftsTab.day4'), t('shiftsTab.day5'), t('shiftsTab.day6'), t('shiftsTab.day7'), t('shiftsTab.day8')];
       return {
           isOpen,
-          label: isOpen ? `Đang Mở (${dayNames[openDay]} - ${dayNames[closeDay]})` : `Đã Khóa (${dayNames[openDay]} - ${dayNames[closeDay]})`
+          label: isOpen ? `${t('shiftsTab.regOpenAuto')} (${dayNames[openDay]} - ${dayNames[closeDay]})` : `${t('shiftsTab.regClosedAuto')} (${dayNames[openDay]} - ${dayNames[closeDay]})`
       };
   };
 
@@ -222,10 +226,10 @@ export default function ShiftsTab() {
         weeklyOpenDay: Number(regForm.weeklyOpenDay),
         weeklyCloseDay: Number(regForm.weeklyCloseDay)
       }, { merge: true });
-      showToast('Cập nhật cấu hình đăng ký ca thành công!');
+      showToast(t('shiftsTab.updateRegSuccess'));
       setRegModal(false);
     } catch (e) {
-      showToast("Không thể cập nhật cấu hình.", "error");
+      showToast(t('shiftsTab.updateRegError'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -237,7 +241,7 @@ export default function ShiftsTab() {
     if (!emp) return;
     
     try {
-      await addDoc(collection(db, 'schedules'), {
+      await addDoc(collection(db, 'stores', storeId, 'schedules'), {
         date: assignModal.date,
         shiftId: assignModal.shift.id,
         employeeCode: emp.employeeCode,
@@ -245,10 +249,10 @@ export default function ShiftsTab() {
         assignedBy: 'admin',
         createdAt: new Date().toISOString()
       });
-      showToast('Đã thêm nhân viên vào ca!');
+      showToast(t('shiftsTab.addEmpSuccess'));
       setSelectedEmpCode('');
     } catch (e) {
-      showToast("Lỗi khi thêm lịch", "error");
+      showToast(t('shiftsTab.addEmpError'), 'error');
     }
   };
 
@@ -260,14 +264,14 @@ export default function ShiftsTab() {
       {/* SCHEDULE CALENDAR SECTION */}
       <div>
         <div className="mb-4">
-          <h2 className="text-2xl font-bold text-gray-900">Lên Lịch Làm Việc</h2>
-          <p className="text-gray-500 mt-1">Xếp ca làm cho nhân viên hoặc mở để nhân viên tự đăng ký.</p>
+          <h2 className="text-2xl font-bold text-gray-900">{t('shiftsTab.scheduleTitle')}</h2>
+          <p className="text-gray-500 mt-1">{t('shiftsTab.scheduleDesc')}</p>
         </div>
         
         <div className="overflow-x-auto bg-white border border-gray-200 rounded-xl shadow-sm">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border-b border-gray-200 bg-gray-50 gap-4">
              <div className="flex items-center gap-4">
-                <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2"><CalendarDays className="w-5 h-5 text-blue-600"/> Lịch Tuần</h3>
+                <h3 className="font-bold text-lg text-gray-900 flex items-center gap-2"><CalendarDays className="w-5 h-5 text-blue-600"/> {t('shiftsTab.weeklySchedule')}</h3>
                 <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-lg shadow-sm px-1 py-1">
                    <button onClick={() => setCurrentWeek(subDays(currentWeek, 7))} className="p-1 hover:bg-gray-100 rounded text-gray-600"><ChevronLeft className="w-5 h-5"/></button>
                    <span className="font-semibold text-sm px-2">{format(weekDays[0], 'dd/MM')} - {format(weekDays[6], 'dd/MM/yyyy')}</span>
@@ -283,7 +287,7 @@ export default function ShiftsTab() {
           <table className="min-w-full divide-y divide-gray-200 table-fixed">
              <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32 border-r border-gray-200">Ca \ Ngày</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32 border-r border-gray-200">{t('shiftsTab.shiftDay')}</th>
                   {weekDays.map(day => (
                      <th key={day.toISOString()} className={cn("px-2 py-3 text-center text-xs border-r border-gray-200 w-32", format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? "bg-blue-50 text-blue-700" : "text-gray-900")}>
                        <div className="font-bold uppercase">{format(day, 'EEEE', {locale: vi})}</div>
@@ -298,7 +302,7 @@ export default function ShiftsTab() {
                      <td className="px-3 py-3 border-r border-gray-200 bg-gray-50 align-top">
                        <div className="font-bold text-sm text-gray-900 leading-tight mb-1">{shift.name}</div>
                        <div className="text-xs text-gray-500 font-medium mb-1"><Clock className="w-3 h-3 inline mr-1"/>{shift.startTime}-{shift.endTime}</div>
-                       <div className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-medium inline-block">Tối đa: {shift.maxEmployees || 1}</div>
+                       <div className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-medium inline-block">{t('shiftsTab.max')}: {shift.maxEmployees || 1}</div>
                      </td>
                      {weekDays.map(day => {
                         const dateStr = format(day, 'yyyy-MM-dd');
@@ -337,8 +341,8 @@ export default function ShiftsTab() {
       <div>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Danh Sách Ca Làm</h2>
-            <p className="text-gray-500 mt-1">Thiết lập các ca làm việc cho nhân viên.</p>
+            <h2 className="text-2xl font-bold text-gray-900">{t('shiftsTab.shiftListTitle')}</h2>
+            <p className="text-gray-500 mt-1">{t('shiftsTab.shiftListDesc')}</p>
           </div>
           <button
             onClick={() => handleOpenModal('add')}
@@ -354,11 +358,11 @@ export default function ShiftsTab() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tên Ca Làm</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thời gian</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Giới hạn NV</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thiết lập thêm</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('shiftsTab.shiftName')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('shiftsTab.time')}</th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">{t('shiftsTab.empLimit')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('shiftsTab.extraSettings')}</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('shiftsTab.action')}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -371,9 +375,7 @@ export default function ShiftsTab() {
                 ) : shifts.length === 0 ? (
                   <tr>
                     <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
-                      <Clock className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      Chưa có ca làm nào được thiết lập.
-                    </td>
+                      <Clock className="w-12 h-12 text-gray-300 mx-auto mb-3" />{t('shiftsTab.noShifts')}</td>
                   </tr>
                 ) : (
                   shifts.map((shift) => (
@@ -388,14 +390,14 @@ export default function ShiftsTab() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-col gap-1.5">
                           {shift.latePenalty > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-md w-max">Phạt trễ: {new Intl.NumberFormat('vi-VN').format(shift.latePenalty)}đ</span>
+                            <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-md w-max">{t('shiftsTab.latePenalty')}: {new Intl.NumberFormat('vi-VN').format(shift.latePenalty)}đ</span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md w-max">Không phạt trễ</span>
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md w-max">{t('shiftsTab.noLatePenalty')}</span>
                           )}
                           {shift.enableOvertime ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md w-max">Tăng ca: {new Intl.NumberFormat('vi-VN').format(shift.overtimeRate)}đ/h</span>
+                            <span className="inline-flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md w-max">{t('shiftsTab.overtime')}: {new Intl.NumberFormat('vi-VN').format(shift.overtimeRate)}đ/h</span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md w-max">Không tính tăng ca</span>
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md w-max">{t('shiftsTab.noOvertime')}</span>
                           )}
                         </div>
                       </td>
@@ -422,7 +424,7 @@ export default function ShiftsTab() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-5 border-b border-gray-200 bg-gray-50">
               <h3 className="text-xl font-bold text-gray-900">
-                {modalMode === 'add' ? 'Thêm Ca Làm Mới' : 'Cập Nhật Ca Làm'}
+                {modalMode === 'add' ? t('shiftsTab.addNewShift') : t('shiftsTab.updateShift')}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors bg-white p-1 rounded shadow-sm border border-gray-200"><X className="w-5 h-5" /></button>
             </div>
@@ -430,45 +432,45 @@ export default function ShiftsTab() {
             <form onSubmit={handleSubmit} className="p-5">
               <div className="space-y-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tên Ca Làm *</label>
-                  <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder="VD: Ca Sáng..." value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.shiftNameReq')}</label>
+                  <input type="text" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" placeholder={t('shiftsTab.shiftNamePlaceholder')} value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Giờ bắt đầu *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.startTimeReq')}</label>
                     <input type="time" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.startTime} onChange={(e) => setFormData({...formData, startTime: e.target.value})} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Giờ kết thúc *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.endTimeReq')}</label>
                     <input type="time" required className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value={formData.endTime} onChange={(e) => setFormData({...formData, endTime: e.target.value})} />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Giới hạn số nhân viên (Người / Ca) *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.empLimitReq')}</label>
                   <input type="number" required min="1" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" value={formData.maxEmployees} onChange={(e) => setFormData({...formData, maxEmployees: e.target.value})} />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-100 mt-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phạt đi trễ (VNĐ)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.latePenaltyVND')}</label>
                     <div className="relative">
-                      <input type="text" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none pr-10" placeholder="Trống = 0" value={formData.latePenalty ? new Intl.NumberFormat('vi-VN').format(formData.latePenalty) : ''} onChange={(e) => { const raw = e.target.value.replace(/\D/g, ''); setFormData({...formData, latePenalty: raw ? Number(raw) : ''}); }} />
+                      <input type="text" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none pr-10" placeholder={t('shiftsTab.emptyIsZero')} value={formData.latePenalty ? new Intl.NumberFormat('vi-VN').format(formData.latePenalty) : ''} onChange={(e) => { const raw = e.target.value.replace(/\D/g, ''); setFormData({...formData, latePenalty: raw ? Number(raw) : ''}); }} />
                       <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-500 font-medium text-sm">đ</div>
                     </div>
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center justify-between">
-                      Cho phép tăng ca
+                      {t('shiftsTab.allowOvertime')}
                       <button type="button" onClick={() => setFormData({...formData, enableOvertime: !formData.enableOvertime})} className={cn("w-10 h-5 rounded-full transition-colors relative", formData.enableOvertime ? "bg-emerald-500" : "bg-gray-300")}>
                          <span className={cn("absolute top-0.5 bg-white w-4 h-4 rounded-full transition-all shadow-sm", formData.enableOvertime ? "left-[22px]" : "left-[2px]")}></span>
                       </button>
                     </label>
                     {formData.enableOvertime && (
                       <div className="relative animate-in slide-in-from-top-1">
-                        <input type="text" required className="w-full px-4 py-2 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none pr-12 bg-emerald-50 text-emerald-900" placeholder="Mức lương / 1 giờ" value={formData.overtimeRate ? new Intl.NumberFormat('vi-VN').format(formData.overtimeRate) : ''} onChange={(e) => { const raw = e.target.value.replace(/\D/g, ''); setFormData({...formData, overtimeRate: raw ? Number(raw) : ''}); }} />
+                        <input type="text" required className="w-full px-4 py-2 border border-emerald-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none pr-12 bg-emerald-50 text-emerald-900" placeholder={t('shiftsTab.wagePerHour')} value={formData.overtimeRate ? new Intl.NumberFormat('vi-VN').format(formData.overtimeRate) : ''} onChange={(e) => { const raw = e.target.value.replace(/\D/g, ''); setFormData({...formData, overtimeRate: raw ? Number(raw) : ''}); }} />
                         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-emerald-600 font-medium text-sm">đ/h</div>
                       </div>
                     )}
@@ -477,10 +479,10 @@ export default function ShiftsTab() {
               </div>
               
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 rounded-lg">Hủy</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 rounded-lg">{t('shiftsTab.cancel')}</button>
                 <button type="submit" disabled={isSubmitting} className="px-5 py-2.5 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-2 disabled:opacity-70">
                   {isSubmitting && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>}
-                  {modalMode === 'add' ? 'Lưu Ca Làm' : 'Cập Nhật'}
+                  {modalMode === 'add' ? t('shiftsTab.saveShift') : t('shiftsTab.update')}
                 </button>
               </div>
             </form>
@@ -494,30 +496,27 @@ export default function ShiftsTab() {
            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95">
               <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-red-50">
                  <h3 className="text-lg font-bold text-red-700 flex items-center gap-2">
-                   <Lock className="w-5 h-5" /> Khóa tài khoản
-                 </h3>
+                   <Lock className="w-5 h-5" /> {t('shiftsTab.lockAccount')}</h3>
                  <button onClick={() => setLockEmpModal({ show: false, scheduleId: null, employeeCode: '', employeeName: '', note: '' })} className="text-gray-400 hover:text-gray-600 bg-white p-1 rounded border shadow-sm"><X className="w-5 h-5" /></button>
               </div>
               <form onSubmit={handleLockEmployee} className="p-4">
                  <p className="text-sm text-gray-600 mb-4">
-                   Bạn đang xóa ca và <strong>khóa tài khoản</strong> của nhân viên <span className="font-bold text-gray-900">{lockEmpModal.employeeName}</span>. Nhân viên sẽ bị văng ra khỏi hệ thống ngay lập tức.
+                   {t('shiftsTab.lockWarning1')} <span className="font-bold text-gray-900">{lockEmpModal.employeeName}</span>{t('shiftsTab.lockWarning2')}
                  </p>
                  <div className="mb-4">
-                   <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú / Lý do vi phạm <span className="text-red-500">*</span></label>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.reasonViolation')} <span className="text-red-500">*</span></label>
                    <textarea
                      required
                      rows={3}
                      className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:border-red-500 text-sm"
-                     placeholder="VD: Vi phạm quy định giờ giấc..."
+                     placeholder={t('shiftsTab.reasonPlaceholder')}
                      value={lockEmpModal.note}
                      onChange={(e) => setLockEmpModal(prev => ({ ...prev, note: e.target.value }))}
                    />
                  </div>
                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => setLockEmpModal({ show: false, scheduleId: null, employeeCode: '', employeeName: '', note: '' })} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Hủy</button>
-                    <button type="submit" disabled={isSubmitting || !lockEmpModal.note.trim()} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
-                      Xác nhận Khóa
-                    </button>
+                    <button type="button" onClick={() => setLockEmpModal({ show: false, scheduleId: null, employeeCode: '', employeeName: '', note: '' })} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">{t('shiftsTab.cancel')}</button>
+                    <button type="submit" disabled={isSubmitting || !lockEmpModal.note.trim()} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">{t('shiftsTab.confirmLock')}</button>
                  </div>
               </form>
            </div>
@@ -530,21 +529,21 @@ export default function ShiftsTab() {
            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
               <div className="flex justify-between items-center p-4 border-b border-gray-200 bg-gray-50">
                  <h3 className="text-lg font-bold text-gray-900 leading-tight">
-                   Xếp ca <span className="text-blue-600">{assignModal.shift.name}</span><br/>
-                   <span className="text-sm font-medium text-gray-500">Ngày {format(parseISO(assignModal.date), 'dd/MM/yyyy')}</span>
+                   {t('shiftsTab.assignShift')} <span className="text-blue-600">{assignModal.shift.name}</span><br/>
+                   <span className="text-sm font-medium text-gray-500">{t('shiftsTab.date')} {format(parseISO(assignModal.date), 'dd/MM/yyyy')}</span>
                  </h3>
                  <button onClick={() => setAssignModal({ show: false, date: null, shift: null, cellSchedules: [] })} className="text-gray-400 hover:text-gray-600 bg-white p-1 rounded border shadow-sm"><X className="w-5 h-5" /></button>
               </div>
               <div className="p-4">
                  <div className="flex justify-between items-center mb-3">
-                    <p className="text-sm text-gray-600 font-medium">Danh sách nhân viên (Tối đa {assignModal.shift.maxEmployees || 1})</p>
+                    <p className="text-sm text-gray-600 font-medium">{t('shiftsTab.empListMax')}{assignModal.shift.maxEmployees || 1})</p>
                     <span className={cn("text-xs font-bold px-2 py-1 rounded-full border", assignModal.cellSchedules.length >= (assignModal.shift.maxEmployees || 1) ? "bg-red-50 text-red-700 border-red-200" : "bg-green-50 text-green-700 border-green-200")}>
-                      Đã chọn: {assignModal.cellSchedules.length}
+                      {t('shiftsTab.selected')}: {assignModal.cellSchedules.length}
                     </span>
                  </div>
                  
                  <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-                   {assignModal.cellSchedules.length === 0 ? <p className="text-sm text-gray-400 italic text-center py-4 border border-dashed rounded-lg">Chưa có ai đăng ký ca này.</p> : assignModal.cellSchedules.map(sch => (
+                   {assignModal.cellSchedules.length === 0 ? <p className="text-sm text-gray-400 italic text-center py-4 border border-dashed rounded-lg">{t('shiftsTab.noRegistration')}</p> : assignModal.cellSchedules.map(sch => (
                       <div key={sch.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                         <div>
                           <span className="text-sm font-bold text-gray-900 block">{sch.employeeName}</span>
@@ -554,14 +553,14 @@ export default function ShiftsTab() {
                            <button 
                              onClick={() => setLockEmpModal({ show: true, scheduleId: sch.id, employeeCode: sch.employeeCode, employeeName: sch.employeeName, note: '' })} 
                              className="text-orange-500 hover:text-orange-700 hover:bg-orange-50 p-2 rounded-lg transition-colors"
-                             title="Xóa khỏi ca và Khóa tài khoản"
+                             title={t('shiftsTab.deleteAndLock')}
                            >
                              <Lock className="w-4 h-4"/>
                            </button>
                            <button 
                              onClick={() => handleDeleteSchedule(sch.id)} 
                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                             title="Xóa khỏi ca"
+                             title={t('shiftsTab.removeFromShift')}
                            >
                              <Trash2 className="w-4 h-4"/>
                            </button>
@@ -572,12 +571,12 @@ export default function ShiftsTab() {
                  
                  <div className="pt-3 border-t border-gray-200 flex gap-2">
                     <select value={selectedEmpCode} onChange={e => setSelectedEmpCode(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg outline-none text-sm font-medium focus:border-blue-500">
-                      <option value="">-- Bấm để chọn nhân viên --</option>
+                      <option value="">-- {t('shiftsTab.clickToSelectEmp')} --</option>
                       {employees.filter(e => !assignModal.cellSchedules.some(s => s.employeeCode === e.employeeCode)).map(e => (
                          <option key={e.employeeCode} value={e.employeeCode}>{e.fullName} ({e.employeeCode})</option>
                       ))}
                     </select>
-                    <button onClick={handleAddSchedule} disabled={!selectedEmpCode || assignModal.cellSchedules.length >= (assignModal.shift.maxEmployees || 1)} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg disabled:opacity-50 disabled:active:scale-100 active:scale-95 transition-all text-sm shadow-sm">Thêm</button>
+                    <button onClick={handleAddSchedule} disabled={!selectedEmpCode || assignModal.cellSchedules.length >= (assignModal.shift.maxEmployees || 1)} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg disabled:opacity-50 disabled:active:scale-100 active:scale-95 transition-all text-sm shadow-sm">{t('shiftsTab.add')}</button>
                  </div>
               </div>
            </div>
@@ -588,21 +587,21 @@ export default function ShiftsTab() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-              <h3 className="font-bold text-lg text-gray-900">Cấu hình Đăng ký Ca</h3>
+              <h3 className="font-bold text-lg text-gray-900">{t('shiftsTab.regSettings')}</h3>
               <button onClick={() => setRegModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={saveRegSettings} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Chế độ Mở/Đóng</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.openCloseMode')}</label>
                 <select
                   value={regForm.registrationMode}
                   onChange={(e) => setRegForm({ ...regForm, registrationMode: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 >
-                  <option value="manual">Thủ công (Tự Mở/Khóa bằng tay)</option>
-                  <option value="auto">Tự động (Theo ngày trong tuần)</option>
+                  <option value="manual">{t('shiftsTab.manualMode')}</option>
+                  <option value="auto">{t('shiftsTab.autoMode')}</option>
                 </select>
               </div>
               
@@ -615,58 +614,56 @@ export default function ShiftsTab() {
                         onChange={(e) => setRegForm({ ...regForm, allowShiftRegistration: e.target.checked })}
                         className="w-4 h-4 text-blue-600 rounded border-gray-300"
                       />
-                      <span className="text-sm font-medium text-gray-800">Đang cho phép đăng ký ca (Mở khóa)</span>
+                      <span className="text-sm font-medium text-gray-800">{t('shiftsTab.allowReg')}</span>
                    </label>
-                   <p className="text-xs text-gray-500 mt-1 pl-6">Nhân viên có thể vào app để đăng ký ca làm khi mục này được bật.</p>
+                   <p className="text-xs text-gray-500 mt-1 pl-6">{t('shiftsTab.allowRegDesc')}</p>
                 </div>
               )}
 
               {regForm.registrationMode === 'auto' && (
                 <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100 mt-4">
                    <div className="col-span-2">
-                     <p className="text-xs text-gray-600 bg-blue-50 p-2 rounded border border-blue-100">
-                       Hệ thống sẽ tự động mở và khóa đăng ký ca hằng tuần theo các ngày bạn chọn. Nhân viên sẽ đăng ký cho <b>tuần làm việc tiếp theo</b>.
-                     </p>
+                     <p className="text-xs text-gray-600 bg-blue-50 p-2 rounded border border-blue-100" dangerouslySetInnerHTML={{ __html: t('shiftsTab.autoRegDesc') }} />
                    </div>
                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Mở vào thứ</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.openOnDay')}</label>
                       <select
                         value={regForm.weeklyOpenDay}
                         onChange={(e) => setRegForm({ ...regForm, weeklyOpenDay: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       >
-                        <option value="1">Thứ 2</option>
-                        <option value="2">Thứ 3</option>
-                        <option value="3">Thứ 4</option>
-                        <option value="4">Thứ 5</option>
-                        <option value="5">Thứ 6</option>
-                        <option value="6">Thứ 7</option>
-                        <option value="7">Chủ nhật</option>
+                        <option value="1">{t('shiftsTab.day2')}</option>
+                        <option value="2">{t('shiftsTab.day3')}</option>
+                        <option value="3">{t('shiftsTab.day4')}</option>
+                        <option value="4">{t('shiftsTab.day5')}</option>
+                        <option value="5">{t('shiftsTab.day6')}</option>
+                        <option value="6">{t('shiftsTab.day7')}</option>
+                        <option value="7">{t('shiftsTab.day8')}</option>
                       </select>
                    </div>
                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Đóng vào thứ</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{t('shiftsTab.closeOnDay')}</label>
                       <select
                         value={regForm.weeklyCloseDay}
                         onChange={(e) => setRegForm({ ...regForm, weeklyCloseDay: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       >
-                        <option value="1">Thứ 2</option>
-                        <option value="2">Thứ 3</option>
-                        <option value="3">Thứ 4</option>
-                        <option value="4">Thứ 5</option>
-                        <option value="5">Thứ 6</option>
-                        <option value="6">Thứ 7</option>
-                        <option value="7">Chủ nhật</option>
+                        <option value="1">{t('shiftsTab.day2')}</option>
+                        <option value="2">{t('shiftsTab.day3')}</option>
+                        <option value="3">{t('shiftsTab.day4')}</option>
+                        <option value="4">{t('shiftsTab.day5')}</option>
+                        <option value="5">{t('shiftsTab.day6')}</option>
+                        <option value="6">{t('shiftsTab.day7')}</option>
+                        <option value="7">{t('shiftsTab.day8')}</option>
                       </select>
                    </div>
                 </div>
               )}
 
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" onClick={() => setRegModal(false)} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">Hủy</button>
+                <button type="button" onClick={() => setRegModal(false)} className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg font-medium transition-colors">{t('shiftsTab.cancel')}</button>
                 <button type="submit" disabled={isSubmitting} className="px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors disabled:opacity-50">
-                  {isSubmitting ? 'Đang lưu...' : 'Lưu cấu hình'}
+                  {isSubmitting ? t('shiftsTab.saving') : t('shiftsTab.saveConfig')}
                 </button>
               </div>
             </form>

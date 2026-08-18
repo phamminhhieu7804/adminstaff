@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, getDocs, doc, getDoc, setDoc, deleteDoc, where, updateDoc, addDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { useTranslation } from 'react-i18next';
 import { useUI } from '../contexts/UIContext';
 import { db } from '../lib/firebase';
-import { Plus, Edit2, Trash2, Search, X, CheckCircle2, TrendingUp, TrendingDown, Lock, Gift } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, CheckCircle2, TrendingUp, TrendingDown, Lock, Gift, Camera } from 'lucide-react';
+import FaceCaptureModal from '../components/FaceCaptureModal';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useStore } from '../StoreContext';
@@ -21,6 +23,7 @@ const initialFormState = {
 };
 
 export default function EmployeesTab() {
+  const { t } = useTranslation();
   const { storeId, storeData } = useStore();
   const isPro = storeData?.packageType === 'Pro';
   const [employees, setEmployees] = useState([]);
@@ -39,12 +42,24 @@ export default function EmployeesTab() {
   
   // Lock Employee Modal
   const [lockEmpModal, setLockEmpModal] = useState({ show: false, employeeCode: '', employeeName: '', note: '' });
+  
+  const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
+
+  const handleFaceCapture = (faceVector, photoDataUrl) => {
+    setFormData(prev => ({
+      ...prev,
+      faceVector,
+      photoUrl: photoDataUrl
+    }));
+    setIsFaceModalOpen(false);
+    showToast('Đã lưu dữ liệu khuôn mặt thành công!', 'success');
+  };
 
   const fetchEmployees = async () => {
     if (!storeId) return;
     setIsLoading(true);
     try {
-      const q = query(collection(db, 'employees'), where('storeId', '==', storeId));
+      const q = query(collection(db, 'stores', storeId, 'employees'));
       const querySnapshot = await getDocs(q);
       const empList = querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -91,60 +106,60 @@ export default function EmployeesTab() {
       const amount = Number(adjustForm.amount);
       const nowStr = new Date().toISOString();
       const currentPeriod = format(new Date(), 'yyyy-MM');
-      const payslipDocId = `${storeId}_${adjustTarget.employeeCode}_${currentPeriod}`;
+      const payslipDocId = `${adjustTarget.employeeCode}_${currentPeriod}`;
       
       if (adjustForm.type === 'increase') {
-        const docRef = doc(db, 'employees', adjustTarget.employeeCode);
+        const docRef = doc(db, 'stores', storeId, 'employees', `${adjustTarget.employeeCode}`);
         await setDoc(docRef, { salaryType: adjustForm.salaryType, salaryRate: amount, storeId }, { merge: true });
         
-        await addDoc(collection(db, 'salary_adjustments'), {
+        await addDoc(collection(db, 'stores', storeId, 'salary_adjustments'), {
           storeId, employeeCode: adjustTarget.employeeCode, type: 'increase',
           amount, salaryType: adjustForm.salaryType, oldRate: adjustTarget.salaryRate,
           createdAt: nowStr, timestamp: serverTimestamp()
         });
 
-        await addDoc(collection(db, 'notifications'), {
+        await addDoc(collection(db, 'stores', storeId, 'notifications'), {
           employeeCode: adjustTarget.employeeCode, type: 'salary_increase',
-          title: 'Cập Nhật Lương Cơ Bản',
-          message: `Mức lương của bạn đã được quản lý cập nhật thành ${new Intl.NumberFormat('vi-VN').format(amount)}đ (${adjustForm.salaryType === 'HOURLY' ? 'Theo giờ' : adjustForm.salaryType === 'DAILY' ? 'Theo ngày' : 'Theo tháng'}).`,
+          title: t('update_base_salary'),
+          message: t('salary_updated_message', { amount: new Intl.NumberFormat('vi-VN').format(amount), type: adjustForm.salaryType === 'HOURLY' ? t('hourly') : adjustForm.salaryType === 'DAILY' ? t('daily') : t('monthly') }),
           read: false, createdAt: nowStr, timestamp: serverTimestamp(), storeId
         });
       } else if (adjustForm.type === 'bonus') {
-        await setDoc(doc(db, 'payslips', payslipDocId), { storeId, employeeCode: adjustTarget.employeeCode, period: currentPeriod, bonus: increment(amount), updatedAt: nowStr }, { merge: true });
+        await setDoc(doc(db, 'stores', storeId, 'payslips', payslipDocId), { storeId, employeeCode: adjustTarget.employeeCode, period: currentPeriod, bonus: increment(amount), updatedAt: nowStr }, { merge: true });
         
-        await addDoc(collection(db, 'salary_adjustments'), {
+        await addDoc(collection(db, 'stores', storeId, 'salary_adjustments'), {
           storeId, employeeCode: adjustTarget.employeeCode, type: 'bonus',
           amount, reason: adjustForm.reason, createdAt: nowStr, timestamp: serverTimestamp()
         });
 
-        await addDoc(collection(db, 'notifications'), {
+        await addDoc(collection(db, 'stores', storeId, 'notifications'), {
           employeeCode: adjustTarget.employeeCode, type: 'salary_bonus',
-          title: 'Nhận Thưởng',
-          message: `Bạn được thưởng ${new Intl.NumberFormat('vi-VN').format(amount)}đ. Lý do: ${adjustForm.reason || 'Không có ghi chú'}`,
+          title: t('receive_bonus'),
+          message: t('bonus_received_message', { amount: new Intl.NumberFormat('vi-VN').format(amount), reason: adjustForm.reason || t('no_note') }),
           read: false, createdAt: nowStr, timestamp: serverTimestamp(), storeId
         });
       } else if (adjustForm.type === 'decrease') {
-        await setDoc(doc(db, 'payslips', payslipDocId), { storeId, employeeCode: adjustTarget.employeeCode, period: currentPeriod, deduction: increment(amount), updatedAt: nowStr }, { merge: true });
+        await setDoc(doc(db, 'stores', storeId, 'payslips', payslipDocId), { storeId, employeeCode: adjustTarget.employeeCode, period: currentPeriod, deduction: increment(amount), updatedAt: nowStr }, { merge: true });
         
-        await addDoc(collection(db, 'salary_adjustments'), {
+        await addDoc(collection(db, 'stores', storeId, 'salary_adjustments'), {
           storeId, employeeCode: adjustTarget.employeeCode, type: 'decrease',
           amount, reason: adjustForm.reason, createdAt: nowStr, timestamp: serverTimestamp()
         });
         
-        await addDoc(collection(db, 'notifications'), {
+        await addDoc(collection(db, 'stores', storeId, 'notifications'), {
           employeeCode: adjustTarget.employeeCode, type: 'salary_decrease',
-          title: 'Thông Báo Phạt / Trừ Lương',
-          message: `Bạn bị trừ ${new Intl.NumberFormat('vi-VN').format(amount)}đ vào lương tháng này. Lý do: ${adjustForm.reason}`,
+          title: t('penalty_notice'),
+          message: t('penalty_message', { amount: new Intl.NumberFormat('vi-VN').format(amount), reason: adjustForm.reason }),
           read: false, createdAt: nowStr, timestamp: serverTimestamp(), storeId
         });
       }
       
-      showToast('Thao tác thành công!');
+      showToast(t('operation_success'));
       setIsAdjustModalOpen(false);
       fetchEmployees();
     } catch (err) {
       console.error(err);
-      showToast('Lỗi khi điều chỉnh lương.', 'error');
+      showToast(t('error_adjusting_salary'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -164,10 +179,10 @@ export default function EmployeesTab() {
       if (modalMode === 'edit') {
          const oldEmp = employees.find(emp => emp.employeeCode === empData.employeeCode);
          if (oldEmp && oldEmp.position !== empData.position && empData.position) {
-             await addDoc(collection(db, 'notifications'), {
+             await addDoc(collection(db, 'stores', storeId, 'notifications'), {
                employeeCode: empData.employeeCode,
-               title: 'Cập Nhật Chức Vụ',
-               message: `Bạn đã được quản lý phong chức vụ mới: ${empData.position}`,
+               title: t('position_update'),
+               message: t('new_position_message', { position: empData.position }),
                type: 'info',
                read: false,
                createdAt: new Date().toISOString(),
@@ -178,15 +193,15 @@ export default function EmployeesTab() {
       }
 
       // Use employeeCode as document ID
-      const docRef = doc(db, 'employees', empData.employeeCode);
+      const docRef = doc(db, 'stores', storeId, 'employees', `${empData.employeeCode}`);
       await setDoc(docRef, empData);
       
-      showToast(modalMode === 'add' ? 'Thêm nhân viên thành công!' : 'Cập nhật nhân viên thành công!');
+      showToast(modalMode === 'add' ? t('add_employee_success') : t('update_employee_success'));
       handleCloseModal();
       fetchEmployees(); // Refresh list
     } catch (error) {
       console.error("Error saving employee:", error);
-      showToast('Có lỗi xảy ra khi lưu thông tin.', 'error');
+      showToast(t('error_saving_info'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -194,13 +209,13 @@ export default function EmployeesTab() {
 
   const handleDelete = (employeeCode) => {
     showConfirm(
-      'Xóa nhân viên',
-      'Bạn có chắc chắn muốn xóa nhân viên này và toàn bộ dữ liệu liên quan? Dữ liệu không thể khôi phục.',
+      t('delete_employee'),
+      t('confirm_delete_employee'),
       async () => {
         try {
           setIsSubmitting(true);
           // 1. Delete employee document
-          await deleteDoc(doc(db, 'employees', employeeCode));
+          await deleteDoc(doc(db, 'stores', storeId, 'employees', `${employeeCode}`));
           
           // 2. Cascade delete related records
           const collectionsToClean = ['attendance_logs', 'payslips', 'advance_requests', 'leave_requests', 'notifications'];
@@ -211,39 +226,39 @@ export default function EmployeesTab() {
           }
 
           // 3. Remove from all shifts
-          const shiftsSnap = await getDocs(collection(db, 'shifts'));
+          const shiftsSnap = await getDocs(collection(db, 'stores', storeId, 'shifts'));
           const updateShiftPromises = shiftsSnap.docs.map(async (shiftDoc) => {
              const shiftData = shiftDoc.data();
              if (shiftData.employees && shiftData.employees.includes(employeeCode)) {
                 const newEmployees = shiftData.employees.filter(e => e !== employeeCode);
-                return updateDoc(doc(db, 'shifts', shiftDoc.id), { employees: newEmployees });
+                return updateDoc(doc(db, 'stores', storeId, 'shifts', shiftDoc.id), { employees: newEmployees });
              }
           });
           await Promise.all(updateShiftPromises);
 
-          showToast('Đã xóa nhân viên và dọn dẹp toàn bộ dữ liệu lịch sử.');
+          showToast(t('employee_deleted_success'));
           fetchEmployees(); // Refresh list
         } catch (error) {
           console.error("Error deleting employee:", error);
-          showToast('Có lỗi xảy ra khi xóa.', 'error');
+          showToast(t('error_deleting'), 'error');
         } finally {
           setIsSubmitting(false);
         }
       },
-      'Đồng ý xóa',
-      'Hủy'
+      t('agree_delete'),
+      t('cancel')
     );
   };
 
   const handleToggleLock = async (employeeCode, currentStatus) => {
     if (!currentStatus) return;
     try {
-      await setDoc(doc(db, 'employees', employeeCode), { isLocked: false, failedAttempts: 0, lockedUntil: null }, { merge: true });
-      showToast('Đã mở khóa tài khoản nhân viên!');
+      await setDoc(doc(db, 'stores', storeId, 'employees', `${employeeCode}`), { isLocked: false, failedAttempts: 0, lockedUntil: null }, { merge: true });
+      showToast(t('account_unlocked'));
       fetchEmployees();
     } catch (error) {
       console.error("Error toggling lock:", error);
-      showToast('Có lỗi xảy ra khi mở khóa.', 'error');
+      showToast(t('error_unlocking'), 'error');
     }
   };
 
@@ -252,16 +267,16 @@ export default function EmployeesTab() {
     if (!lockEmpModal.note.trim()) return;
     setIsSubmitting(true);
     try {
-      await setDoc(doc(db, 'employees', lockEmpModal.employeeCode), {
+      await setDoc(doc(db, 'stores', storeId, 'employees', `${lockEmpModal.employeeCode}`), {
         isLocked: true,
         lockReason: lockEmpModal.note.trim()
       }, { merge: true });
-      showToast('Đã khóa tài khoản nhân viên.');
+      showToast(t('account_locked'));
       setLockEmpModal({ show: false, employeeCode: '', employeeName: '', note: '' });
       fetchEmployees();
     } catch (err) {
       console.error(err);
-      showToast('Có lỗi xảy ra khi khóa.', 'error');
+      showToast(t('error_locking'), 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -276,8 +291,8 @@ export default function EmployeesTab() {
     <div className="h-full flex flex-col relative">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Quản Lý Nhân Sự</h2>
-          <p className="text-gray-500 mt-1">Danh sách thông tin nhân viên và mức lương.</p>
+          <h2 className="text-2xl font-bold text-gray-900">{t('personnel_management')}</h2>
+          <p className="text-gray-500 mt-1">{t('employee_list_description')}</p>
         </div>
         <button
           onClick={() => handleOpenModal('add')}
@@ -299,7 +314,7 @@ export default function EmployeesTab() {
           <input
             type="text"
             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm"
-            placeholder="Tìm kiếm theo Tên hoặc Mã NV..."
+            placeholder={t('search_employee_placeholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -312,16 +327,16 @@ export default function EmployeesTab() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mã NV</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Họ và Tên</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Chức vụ</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quê Quán</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CCCD</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hình thức lương</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mức lương</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ngân hàng</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Trạng thái</th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Thao tác</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('emp_code')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('full_name')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('position')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('hometown')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('id_card')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('salary_type')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('salary')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('bank')}</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('status')}</th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -348,7 +363,7 @@ export default function EmployeesTab() {
                         <span 
                           onClick={() => setLockEmpModal({ show: true, employeeCode: emp.employeeCode, employeeName: emp.fullName, note: '' })}
                           className="cursor-pointer hover:text-blue-600 hover:underline transition-colors"
-                          title="Bấm để khóa tài khoản"
+                          title={t('click_to_lock')}
                         >
                           {emp.fullName}
                         </span>
@@ -360,14 +375,14 @@ export default function EmployeesTab() {
                         <button 
                           onClick={() => handleToggleLock(emp.employeeCode, emp.isLocked)} 
                           className="p-1 hover:bg-red-100 rounded-full text-red-600 transition-colors cursor-pointer" 
-                          title="Mở khóa tài khoản"
+                          title={t('click_to_unlock')}
                         >
                           <Lock className="w-4 h-4" />
                         </button>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                       {emp.position ? <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{emp.position}</span> : <span className="text-gray-400 italic">Nhân viên</span>}
+                       {emp.position ? <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{emp.position}</span> : <span className="text-gray-400 italic">{t('employee')}</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.hometown}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{emp.idCardNumber}</td>
@@ -378,18 +393,18 @@ export default function EmployeesTab() {
                         emp.salaryType === 'DAILY' ? "bg-blue-100 text-blue-800" :
                         "bg-amber-100 text-amber-800"
                       )}>
-                        {emp.salaryType === 'HOURLY' ? 'Theo giờ' : emp.salaryType === 'DAILY' ? 'Theo ngày' : 'Theo tháng'}
+                        {emp.salaryType === 'HOURLY' ? t('hourly') : emp.salaryType === 'DAILY' ? t('daily') : t('monthly')}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                       {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(emp.salaryRate)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {emp.bankName ? <div className="flex flex-col"><span className="font-semibold text-gray-700">{emp.bankName}</span><span>{emp.bankAccount}</span></div> : <span className="italic text-gray-400">Chưa có</span>}
+                      {emp.bankName ? <div className="flex flex-col"><span className="font-semibold text-gray-700">{emp.bankName}</span><span>{emp.bankAccount}</span></div> : <span className="italic text-gray-400">{t('not_available')}</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                        {emp.isLocked ? (
-                         <button onClick={() => handleToggleLock(emp.employeeCode, emp.isLocked)} className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 transition-colors">Bị khóa (Nhấn mở)</button>
+                         <button onClick={() => handleToggleLock(emp.employeeCode, emp.isLocked)} className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 transition-colors">{t('locked_click_to_unlock')}</button>
                        ) : (
                          <div className="flex items-center gap-1.5">
                            <span className={cn("relative flex h-2.5 w-2.5", emp.isOnline ? "text-green-500" : "text-gray-400")}>
@@ -397,7 +412,7 @@ export default function EmployeesTab() {
                              <span className={cn("relative inline-flex rounded-full h-2.5 w-2.5", emp.isOnline ? "bg-green-500" : "bg-gray-400")}></span>
                            </span>
                            <span className={cn("px-2.5 py-1 rounded-full text-xs font-medium", emp.isOnline ? "bg-green-50 text-green-700 border border-green-200" : "bg-gray-50 text-gray-600 border border-gray-200")}>
-                             {emp.isOnline ? 'Hoạt động' : 'Offline'}
+                             {emp.isOnline ? t('active') : t('offline')}
                            </span>
                          </div>
                        )}
@@ -436,7 +451,7 @@ export default function EmployeesTab() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-6 border-b border-gray-200">
               <h3 className="text-xl font-bold text-gray-900">
-                {modalMode === 'add' ? 'Thêm Nhân Viên Mới' : 'Cập Nhật Nhân Viên'}
+                {modalMode === 'add' ? t('add_new_employee') : t('update_employee')}
               </h3>
               <button 
                 onClick={handleCloseModal}
@@ -449,17 +464,17 @@ export default function EmployeesTab() {
             <form onSubmit={handleSubmit} className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Số điện thoại (Mã PIN) *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('phone_pin')} *</label>
                   <input
                     type="text"
                     required
                     disabled={modalMode === 'edit'}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500"
-                    placeholder="VD: 0901234567"
+                    placeholder={t('placeholder_phone')}
                     value={formData.employeeCode}
                     onChange={(e) => setFormData({...formData, employeeCode: e.target.value})}
                   />
-                  {modalMode === 'add' && <p className="text-xs text-gray-500 mt-1">Dùng để nhân viên đăng nhập điểm danh.</p>}
+                  {modalMode === 'add' && <p className="text-xs text-gray-500 mt-1">{t('pin_usage_note')}</p>}
                 </div>
                 
                 <div>
@@ -468,40 +483,66 @@ export default function EmployeesTab() {
                     type="text"
                     required
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    placeholder="Nguyễn Văn A"
+                    placeholder={t('placeholder_name')}
                     value={formData.fullName}
                     onChange={(e) => setFormData({...formData, fullName: e.target.value})}
                   />
                 </div>
+
+                <div className="md:col-span-2 p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
+                      <Camera className="w-4 h-4 text-blue-600" />
+                      Dữ liệu khuôn mặt
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formData.faceVector 
+                        ? 'Đã có dữ liệu khuôn mặt. Sẵn sàng cho Face Check-in.' 
+                        : 'Chưa có dữ liệu khuôn mặt. Nhấn chụp để thêm.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {formData.photoUrl && (
+                      <img src={formData.photoUrl} alt="Face" className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsFaceModalOpen(true)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      {formData.faceVector ? 'Chụp lại' : 'Chụp khuôn mặt'}
+                    </button>
+                  </div>
+                </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Chức vụ</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('position')}</label>
                   <input
                     type="text"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    placeholder="VD: Quản lý, Pha chế..."
+                    placeholder={t('placeholder_position')}
                     value={formData.position || ''}
                     onChange={(e) => setFormData({...formData, position: e.target.value})}
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Số CCCD</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('id_card_number')}</label>
                   <input
                     type="text"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    placeholder="0123456789"
+                    placeholder={t('placeholder_id_card')}
                     value={formData.idCardNumber}
                     onChange={(e) => setFormData({...formData, idCardNumber: e.target.value})}
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Quê Quán</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('hometown')}</label>
                   <input
                     type="text"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    placeholder="TP.HCM"
+                    placeholder={t('placeholder_hometown')}
                     value={formData.hometown}
                     onChange={(e) => setFormData({...formData, hometown: e.target.value})}
                   />
@@ -513,16 +554,16 @@ export default function EmployeesTab() {
                       <Lock className="w-4 h-4 text-gray-400 mr-1" /><span className="text-xs text-gray-400 font-bold">Pro</span>
                     </div>
                   )}
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Hình thức trả lương *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('salary_payment_type')} *</label>
                   <select
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
                     value={formData.salaryType}
                     onChange={(e) => setFormData({...formData, salaryType: e.target.value})}
                     disabled={!isPro}
                   >
-                    <option value="HOURLY">Theo giờ (HOURLY)</option>
-                    <option value="DAILY">Theo ngày (DAILY)</option>
-                    <option value="MONTHLY">Theo tháng (MONTHLY)</option>
+                    <option value="HOURLY">{t('hourly_option')}</option>
+                    <option value="DAILY">{t('daily_option')}</option>
+                    <option value="MONTHLY">{t('monthly_option')}</option>
                   </select>
                 </div>
                 
@@ -532,14 +573,14 @@ export default function EmployeesTab() {
                       <Lock className="w-4 h-4 text-gray-400 mr-1" /><span className="text-xs text-gray-400 font-bold">Pro</span>
                     </div>
                   )}
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mức lương (VNĐ) *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('salary_vnd')} *</label>
                   <div className="relative">
                     <input
                       type="text"
                       inputMode="numeric"
                       required
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all pr-12"
-                      placeholder="VD: 25.000"
+                      placeholder={t('placeholder_salary')}
                       value={formData.salaryRate ? new Intl.NumberFormat('vi-VN').format(formData.salaryRate) : ''}
                       onChange={(e) => {
                         const raw = e.target.value.replace(/\D/g, '');
@@ -560,22 +601,22 @@ export default function EmployeesTab() {
                      </div>
                    )}
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Tên Ngân Hàng</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{t('bank_name')}</label>
                      <input
                        type="text"
                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                       placeholder="VD: Vietcombank"
+                       placeholder={t('placeholder_bank')}
                        value={formData.bankName || ''}
                        onChange={(e) => setFormData({...formData, bankName: e.target.value})}
                        disabled={!isPro}
                      />
                    </div>
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Số Tài Khoản</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{t('bank_account')}</label>
                      <input
                        type="text"
                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                       placeholder="VD: 0123456789"
+                       placeholder={t('placeholder_account')}
                        value={formData.bankAccount || ''}
                        onChange={(e) => setFormData({...formData, bankAccount: e.target.value})}
                        disabled={!isPro}
@@ -592,8 +633,8 @@ export default function EmployeesTab() {
                             onChange={(e) => setFormData({...formData, isLocked: e.target.checked})}
                           />
                           <div>
-                            <p className="font-semibold text-red-800 text-sm">Tạm khóa tài khoản</p>
-                            <p className="text-xs text-red-600 mt-0.5">Nhân viên sẽ bị đăng xuất và không thể đăng nhập cho đến khi được mở khóa.</p>
+                            <p className="font-semibold text-red-800 text-sm">{t('temp_lock_account')}</p>
+                            <p className="text-xs text-red-600 mt-0.5">{t('lock_account_note')}</p>
                           </div>
                        </label>
                      </div>
@@ -617,7 +658,7 @@ export default function EmployeesTab() {
                   {isSubmitting ? (
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                   ) : null}
-                  {modalMode === 'add' ? 'Lưu Nhân Viên' : 'Cập Nhật'}
+                  {modalMode === 'add' ? t('save_employee') : t('update')}
                 </button>
               </div>
             </form>
@@ -654,47 +695,47 @@ export default function EmployeesTab() {
               <div className="space-y-4">
                  {adjustForm.type === 'increase' && (
                     <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-800 text-sm mb-4">
-                       <p className="font-semibold mb-1">Cập nhật Lương Cơ Bản</p>
-                       <p>Lương hiện tại: <b>{new Intl.NumberFormat('vi-VN').format(adjustTarget?.salaryRate)}đ</b> ({adjustTarget?.salaryType}). Hành động này sẽ thay đổi vĩnh viễn hình thức và mức lương gốc.</p>
+                       <p className="font-semibold mb-1">{t('update_base_salary_title')}</p>
+                       <p>{t('current_salary')}: <b>{new Intl.NumberFormat('vi-VN').format(adjustTarget?.salaryRate)}đ</b> ({adjustTarget?.salaryType}). {t('change_salary_note')}</p>
                     </div>
                  )}
                  {adjustForm.type === 'bonus' && (
                     <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-blue-800 text-sm mb-4">
-                       <p className="font-semibold mb-1">Thưởng nóng</p>
-                       <p>Số tiền này sẽ được <b>cộng thêm</b> vào phiếu lương tháng hiện tại của <b>{adjustTarget?.fullName}</b>.</p>
+                       <p className="font-semibold mb-1">{t('instant_bonus')}</p>
+                       <p>{t('bonus_note_1')} <b>{t('added')}</b> {t('bonus_note_2')} <b>{adjustTarget?.fullName}</b>.</p>
                     </div>
                  )}
                  {adjustForm.type === 'decrease' && (
                     <div className="p-4 bg-red-50 border border-red-100 rounded-lg text-red-800 text-sm mb-4">
-                       <p className="font-semibold mb-1">Tạo phiếu phạt</p>
-                       <p>Số tiền này sẽ được <b>khấu trừ</b> trực tiếp vào Tiền Lương Thực Nhận trong tháng này.</p>
+                       <p className="font-semibold mb-1">{t('create_penalty_slip')}</p>
+                       <p>{t('penalty_note_1')} <b>{t('deducted')}</b> {t('penalty_note_2')}</p>
                     </div>
                  )}
 
                  {adjustForm.type === 'increase' && (
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Hình thức trả lương mới</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{t('new_salary_type')}</label>
                      <select
                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
                        value={adjustForm.salaryType}
                        onChange={(e) => setAdjustForm({...adjustForm, salaryType: e.target.value})}
                      >
-                       <option value="HOURLY">Theo giờ (HOURLY)</option>
-                       <option value="DAILY">Theo ngày (DAILY)</option>
-                       <option value="MONTHLY">Theo tháng (MONTHLY)</option>
+                       <option value="HOURLY">{t('hourly_option')}</option>
+                       <option value="DAILY">{t('daily_option')}</option>
+                       <option value="MONTHLY">{t('monthly_option')}</option>
                      </select>
                    </div>
                  )}
 
                  <div>
-                   <label className="block text-sm font-medium text-gray-700 mb-1">{adjustForm.type === 'increase' ? 'Mức lương mới (VNĐ)' : adjustForm.type === 'bonus' ? 'Số tiền thưởng (VNĐ)' : 'Số tiền phạt (VNĐ)'}</label>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">{adjustForm.type === 'increase' ? t('new_salary_vnd') : adjustForm.type === 'bonus' ? t('bonus_amount_vnd') : t('penalty_amount_vnd')}</label>
                    <div className="relative">
                      <input
                        type="text"
                        inputMode="numeric"
                        required
                        className={cn("w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 outline-none transition-all pr-12 font-bold text-lg", adjustForm.type === 'increase' ? "focus:ring-emerald-500 focus:border-emerald-500 text-emerald-700" : adjustForm.type === 'bonus' ? "focus:ring-blue-500 focus:border-blue-500 text-blue-700" : "focus:ring-red-500 focus:border-red-500 text-red-700")}
-                       placeholder={adjustForm.type === 'increase' ? "VD: 30000" : "VD: 50000"}
+                       placeholder={adjustForm.type === 'increase' ? t('placeholder_salary_increase') : t('placeholder_salary_bonus')}
                        value={adjustForm.amount ? new Intl.NumberFormat('vi-VN').format(adjustForm.amount) : ''}
                        onChange={(e) => {
                          const raw = e.target.value.replace(/\D/g, '');
@@ -707,12 +748,12 @@ export default function EmployeesTab() {
 
                  {(adjustForm.type === 'decrease' || adjustForm.type === 'bonus') && (
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-1">Lý do / Ghi chú</label>
+                     <label className="block text-sm font-medium text-gray-700 mb-1">{t('reason_note')}</label>
                      <textarea
                        required={adjustForm.type === 'decrease'}
                        rows="2"
                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none"
-                       placeholder={adjustForm.type === 'decrease' ? "VD: Đi trễ, làm hỏng đồ..." : "VD: Làm tốt, đạt doanh thu..."}
+                       placeholder={adjustForm.type === 'decrease' ? t('placeholder_penalty_reason') : t('placeholder_bonus_reason')}
                        value={adjustForm.reason}
                        onChange={(e) => setAdjustForm({...adjustForm, reason: e.target.value})}
                      ></textarea>
@@ -754,21 +795,21 @@ export default function EmployeesTab() {
               </div>
               <form onSubmit={handleLockEmployee} className="p-4">
                  <p className="text-sm text-gray-600 mb-4">
-                   Bạn đang <strong>khóa tài khoản</strong> của nhân viên <span className="font-bold text-gray-900">{lockEmpModal.employeeName}</span>.
+                   {t('locking_account_for')} <span className="font-bold text-gray-900">{lockEmpModal.employeeName}</span>.
                  </p>
                  <div className="mb-4">
-                   <label className="block text-sm font-medium text-gray-700 mb-1">Ghi chú / Lý do khóa <span className="text-red-500">*</span></label>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('lock_reason')} <span className="text-red-500">*</span></label>
                    <textarea
                      required
                      rows={3}
                      className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:border-red-500 text-sm"
-                     placeholder="VD: Vi phạm quy định..."
+                     placeholder={t('placeholder_lock_reason')}
                      value={lockEmpModal.note}
                      onChange={(e) => setLockEmpModal(prev => ({ ...prev, note: e.target.value }))}
                    />
                  </div>
                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => setLockEmpModal({ show: false, employeeCode: '', employeeName: '', note: '' })} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Hủy</button>
+                    <button type="button" onClick={() => setLockEmpModal({ show: false, employeeCode: '', employeeName: '', note: '' })} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">{t('cancel')}</button>
                     <button type="submit" disabled={isSubmitting || !lockEmpModal.note.trim()} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
                       Xác nhận Khóa
                     </button>
@@ -777,6 +818,13 @@ export default function EmployeesTab() {
            </div>
         </div>
       )}
+
+      <FaceCaptureModal 
+        isOpen={isFaceModalOpen} 
+        onClose={() => setIsFaceModalOpen(false)} 
+        onCapture={handleFaceCapture}
+        employeeName={formData.fullName}
+      />
     </div>
   );
 }

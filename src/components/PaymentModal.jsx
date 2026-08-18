@@ -4,8 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { collection, doc, getDocs, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase'; // File cấu hình Firebase của dự án
 import { ShieldCheck, Loader2, X, CreditCard, Star, Package } from 'lucide-react';
-
-export default function PaymentModal({ storeId, onClose }) {
+import { useStore } from '../StoreContext';
+export default function PaymentModal({ onClose }) {
+  const { storeId } = useStore();
   const [plans, setPlans] = useState([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
   

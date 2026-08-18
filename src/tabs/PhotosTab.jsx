@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { useUI } from '../contexts/UIContext';
 import { db } from '../lib/firebase';
-import { Camera, CheckCircle2, XCircle, Search, Clock, Image as ImageIcon } from 'lucide-react';
+import { Camera, CheckCircle2, XCircle, Search, Clock, Image as ImageIcon, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { cn } from '../lib/utils';
@@ -17,13 +17,13 @@ export default function PhotosTab() {
   const [actionModal, setActionModal] = useState({ show: false, type: '', photo: null });
   const [adminNote, setAdminNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [galleryModal, setGalleryModal] = useState({ show: false, photos: [], currentIndex: 0 });
 
   useEffect(() => {
     if (!storeId) return;
 
     const q = query(
-      collection(db, 'checkout_photos'),
-      where('storeId', '==', storeId)
+      collection(db, 'stores', storeId, 'checkout_photos')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -32,11 +32,11 @@ export default function PhotosTab() {
       
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        // Auto-cleanup photos older than 3 days
+        // Auto-cleanup photos older than 7 days
         const createdAt = data.createdAt ? new Date(data.createdAt) : now;
-        if (differenceInDays(now, createdAt) > 3) {
+        if (differenceInDays(now, createdAt) > 7) {
           // Delete old records in the background
-          deleteDoc(doc(db, 'checkout_photos', docSnap.id)).catch(console.error);
+          deleteDoc(doc(db, 'stores', storeId, 'checkout_photos', docSnap.id)).catch(console.error);
         } else {
           allPhotos.push({ id: docSnap.id, ...data, createdAt });
         }
@@ -58,14 +58,14 @@ export default function PhotosTab() {
       const statusName = type === 'approved' ? 'đã được Duyệt' : 'đã bị Từ chối';
 
       // 1. Update photo status
-      await updateDoc(doc(db, 'checkout_photos', photo.id), {
+      await updateDoc(doc(db, 'stores', storeId, 'checkout_photos', photo.id), {
         status: type,
         adminNote: adminNote || '',
         updatedAt: new Date().toISOString()
       });
 
       // 2. Send notification to staff
-      await addDoc(collection(db, 'notifications'), {
+      await addDoc(collection(db, 'stores', storeId, 'notifications'), {
         employeeCode: photo.employeeCode,
         type: type === 'approved' ? 'photo_approved' : 'photo_rejected',
         title: `Ảnh Checkout ${statusName}`,
@@ -91,6 +91,28 @@ export default function PhotosTab() {
 
   const pendingCount = photos.filter(p => p.status === 'pending').length;
 
+  const openGallery = (photoUrls, startIndex = 0) => {
+    setGalleryModal({ show: true, photos: photoUrls, currentIndex: startIndex });
+  };
+
+  const closeGallery = () => {
+    setGalleryModal({ show: false, photos: [], currentIndex: 0 });
+  };
+
+  const nextPhoto = () => {
+    setGalleryModal(prev => ({
+      ...prev,
+      currentIndex: (prev.currentIndex + 1) % prev.photos.length
+    }));
+  };
+
+  const prevPhoto = () => {
+    setGalleryModal(prev => ({
+      ...prev,
+      currentIndex: (prev.currentIndex - 1 + prev.photos.length) % prev.photos.length
+    }));
+  };
+
   if (isLoading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
   }
@@ -103,7 +125,7 @@ export default function PhotosTab() {
             <Camera className="w-6 h-6 text-blue-600" />
             Duyệt ảnh Check-out
           </h2>
-          <p className="text-sm text-gray-500 mt-1">Ảnh tự động xóa sau 3 ngày lưu trữ.</p>
+          <p className="text-sm text-gray-500 mt-1">Ảnh tự động xóa sau 7 ngày lưu trữ.</p>
         </div>
       </div>
 
@@ -152,58 +174,88 @@ export default function PhotosTab() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredPhotos.map((photo) => (
-            <div key={photo.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm flex flex-col">
-              <div className="relative h-64 bg-gray-100 group">
-                <img 
-                  src={photo.photoUrl} 
-                  alt="Checkout" 
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-                <div className="absolute top-2 right-2 flex gap-2">
-                  {photo.status === 'pending' && <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-lg shadow-sm">Chờ duyệt</span>}
-                  {photo.status === 'approved' && <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-lg shadow-sm">Đã duyệt</span>}
-                  {photo.status === 'rejected' && <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-lg shadow-sm">Từ chối</span>}
+          {filteredPhotos.map((photo) => {
+            const urls = photo.photoUrls || [photo.photoUrl];
+            const photoCount = urls.length;
+            
+            return (
+              <div key={photo.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm flex flex-col">
+                <div 
+                  className="relative h-64 bg-gray-100 group cursor-pointer"
+                  onClick={() => openGallery(urls, 0)}
+                >
+                  <img 
+                    src={photo.photoUrl} 
+                    alt="Checkout" 
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                  {/* Photo count badge */}
+                  {photoCount > 1 && (
+                    <div className="absolute bottom-3 left-3 bg-black/70 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1.5 backdrop-blur-sm">
+                      <ImageIcon className="w-4 h-4" />
+                      {photoCount} ảnh
+                    </div>
+                  )}
+                  {/* Thumbnail strip for multiple photos */}
+                  {photoCount > 1 && (
+                    <div className="absolute bottom-3 right-3 flex gap-1">
+                      {urls.slice(1, 4).map((url, idx) => (
+                        <div key={idx} className="w-10 h-10 rounded-md overflow-hidden border-2 border-white/80 shadow-sm">
+                          <img src={url} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      ))}
+                      {photoCount > 4 && (
+                        <div className="w-10 h-10 rounded-md bg-black/60 border-2 border-white/80 flex items-center justify-center text-white text-xs font-bold">
+                          +{photoCount - 4}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 flex gap-2">
+                    {photo.status === 'pending' && <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-lg shadow-sm">Chờ duyệt</span>}
+                    {photo.status === 'approved' && <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-lg shadow-sm">Đã duyệt</span>}
+                    {photo.status === 'rejected' && <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-lg shadow-sm">Từ chối</span>}
+                  </div>
                 </div>
-              </div>
-              <div className="p-4 flex flex-col flex-1">
-                <h3 className="font-bold text-gray-900 mb-1">{photo.employeeName}</h3>
-                <div className="text-sm text-gray-500 space-y-1 mb-4 flex-1">
-                  <p>Mã NV: {photo.employeeCode}</p>
-                  <p>Ca làm: {photo.shiftName || 'Không xác định'}</p>
-                  <p className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {format(photo.createdAt, 'HH:mm dd/MM', { locale: vi })}</p>
-                  {photo.adminNote && (
-                    <p className="mt-2 p-2 bg-gray-50 rounded-lg border border-gray-100 text-gray-700 italic">
-                      " {photo.adminNote} "
-                    </p>
+                <div className="p-4 flex flex-col flex-1">
+                  <h3 className="font-bold text-gray-900 mb-1">{photo.employeeName}</h3>
+                  <div className="text-sm text-gray-500 space-y-1 mb-4 flex-1">
+                    <p>Mã NV: {photo.employeeCode}</p>
+                    <p>Ca làm: {photo.shiftName || 'Không xác định'}</p>
+                    <p className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {format(photo.createdAt, 'HH:mm dd/MM', { locale: vi })}</p>
+                    {photo.adminNote && (
+                      <p className="mt-2 p-2 bg-gray-50 rounded-lg border border-gray-100 text-gray-700 italic">
+                        " {photo.adminNote} "
+                      </p>
+                    )}
+                  </div>
+                  
+                  {filter === 'pending' && (
+                    <div className="grid grid-cols-2 gap-2 mt-auto">
+                      <button
+                        onClick={() => {
+                          setActionModal({ show: true, type: 'rejected', photo });
+                          setAdminNote('');
+                        }}
+                        className="flex items-center justify-center gap-1 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg font-medium transition-colors"
+                      >
+                        <XCircle className="w-4 h-4" /> Từ chối
+                      </button>
+                      <button
+                        onClick={() => {
+                          setActionModal({ show: true, type: 'approved', photo });
+                          setAdminNote('');
+                        }}
+                        className="flex items-center justify-center gap-1 px-3 py-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg font-medium transition-colors"
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> Duyệt ảnh
+                      </button>
+                    </div>
                   )}
                 </div>
-                
-                {filter === 'pending' && (
-                  <div className="grid grid-cols-2 gap-2 mt-auto">
-                    <button
-                      onClick={() => {
-                        setActionModal({ show: true, type: 'rejected', photo });
-                        setAdminNote('');
-                      }}
-                      className="flex items-center justify-center gap-1 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg font-medium transition-colors"
-                    >
-                      <XCircle className="w-4 h-4" /> Từ chối
-                    </button>
-                    <button
-                      onClick={() => {
-                        setActionModal({ show: true, type: 'approved', photo });
-                        setAdminNote('');
-                      }}
-                      className="flex items-center justify-center gap-1 px-3 py-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg font-medium transition-colors"
-                    >
-                      <CheckCircle2 className="w-4 h-4" /> Duyệt ảnh
-                    </button>
-                  </div>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -270,6 +322,63 @@ export default function PhotosTab() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Photo Gallery Modal */}
+      {galleryModal.show && galleryModal.photos.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm">
+          <button
+            onClick={closeGallery}
+            className="absolute top-4 right-4 z-10 text-white/80 hover:text-white p-2 bg-black/40 rounded-full"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-white/80 text-sm font-medium bg-black/40 px-3 py-1 rounded-full">
+            {galleryModal.currentIndex + 1} / {galleryModal.photos.length}
+          </div>
+
+          {galleryModal.photos.length > 1 && (
+            <>
+              <button
+                onClick={prevPhoto}
+                className="absolute left-4 z-10 text-white/80 hover:text-white p-3 bg-black/40 rounded-full"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <button
+                onClick={nextPhoto}
+                className="absolute right-4 z-10 text-white/80 hover:text-white p-3 bg-black/40 rounded-full"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </>
+          )}
+
+          <img 
+            src={galleryModal.photos[galleryModal.currentIndex]} 
+            alt={`Ảnh ${galleryModal.currentIndex + 1}`}
+            className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
+          />
+
+          {/* Thumbnail strip */}
+          {galleryModal.photos.length > 1 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 bg-black/50 p-2 rounded-xl backdrop-blur-sm">
+              {galleryModal.photos.map((url, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setGalleryModal(prev => ({ ...prev, currentIndex: idx }))}
+                  className={cn(
+                    "w-14 h-14 rounded-lg overflow-hidden border-2 transition-all flex-shrink-0",
+                    idx === galleryModal.currentIndex ? "border-white scale-110" : "border-transparent opacity-60 hover:opacity-100"
+                  )}
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

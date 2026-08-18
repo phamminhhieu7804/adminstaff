@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Store, MapPin, Save, AlertCircle, CheckCircle2, Navigation, Wallet, Lock } from 'lucide-react';
+import { Store, MapPin, Save, AlertCircle, CheckCircle2, Navigation, Wallet, Lock, Building2, Camera } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useStore } from '../StoreContext';
 
 export default function SettingsTab() {
   const { storeId, storeData } = useStore();
+  const { t } = useTranslation();
   const isPro = storeData?.packageType === 'Pro';
   const [settings, setSettings] = useState({
     storeName: '',
@@ -18,6 +20,13 @@ export default function SettingsTab() {
     maxAdvancePercent: 40,
     minAdvanceDays: 5,
     requireCheckoutPhoto: false,
+    requireCheckinPhoto: false,
+  });
+  
+  const [sepayConfig, setSepayConfig] = useState({
+    bankCode: '',
+    accountNumber: '',
+    accountName: ''
   });
   
   const [isLoading, setIsLoading] = useState(true);
@@ -34,8 +43,18 @@ export default function SettingsTab() {
         if (docSnap.exists()) {
           setSettings(docSnap.data());
         } else {
-          // Initialize if not exists
           await setDoc(docRef, settings);
+        }
+
+        const sepayDoc = await getDoc(doc(db, 'stores', storeId, 'store_settings', 'info'));
+        if (sepayDoc.exists()) {
+          const data = sepayDoc.data();
+          if (data.bankAccount) {
+            setSepayConfig(data.bankAccount);
+          } else if (data.bankCode) {
+            // Fallback for older flat structure
+            setSepayConfig({ bankCode: data.bankCode, accountNumber: data.accountNumber, accountName: data.accountName });
+          }
         }
       } catch (error) {
         console.error("Error fetching settings:", error);
@@ -46,7 +65,7 @@ export default function SettingsTab() {
     };
 
     fetchSettings();
-  }, []);
+  }, [storeId]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -56,13 +75,18 @@ export default function SettingsTab() {
     }));
   };
 
+  const handleSepayChange = (e) => {
+    const { name, value } = e.target;
+    setSepayConfig(prev => ({ ...prev, [name]: value }));
+  };
+
   const handleGetCurrentLocation = () => {
     if (!navigator.geolocation) {
       setMessage({ type: 'error', text: 'Trình duyệt của bạn không hỗ trợ định vị GPS.' });
       return;
     }
     
-    setMessage({ type: '', text: '' }); // Clear old messages
+    setMessage({ type: '', text: '' });
     
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -96,9 +120,11 @@ export default function SettingsTab() {
     try {
       const docRef = doc(db, 'store_settings', storeId);
       await setDoc(docRef, settings, { merge: true });
+
+      // Save SePay Config
+      await setDoc(doc(db, 'stores', storeId, 'store_settings', 'info'), { bankAccount: sepayConfig }, { merge: true });
+
       setMessage({ type: 'success', text: 'Lưu cấu hình thành công!' });
-      
-      // Clear success message after 3 seconds
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (error) {
       console.error("Error saving settings:", error);
@@ -119,8 +145,8 @@ export default function SettingsTab() {
   return (
     <div className="w-full max-w-4xl mx-auto">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900">Cấu Hình Cửa Hàng</h2>
-        <p className="text-gray-500 mt-1">Cập nhật thông tin cửa hàng, Wi-Fi và tọa độ định vị để nhân viên chấm công.</p>
+        <h2 className="text-2xl font-bold text-gray-900">{t('settingsTab.title')}</h2>
+        <p className="text-gray-500 mt-1">{t('settingsTab.description')}</p>
       </div>
 
       {message.text && (
@@ -138,18 +164,18 @@ export default function SettingsTab() {
         <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
           <div className="flex items-center gap-2 mb-4 text-blue-700">
             <Store className="w-5 h-5" />
-            <h3 className="text-lg font-semibold">Thông tin chung</h3>
+            <h3 className="text-lg font-semibold">{t('settingsTab.generalInfo')}</h3>
           </div>
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tên cửa hàng / Quán</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.storeName')}</label>
               <input
                 type="text"
                 name="storeName"
                 value={settings.storeName}
                 onChange={handleChange}
-                placeholder="VD: Cà Phê Mộc"
+                placeholder={t('settingsTab.storeNamePlaceholder')}
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
@@ -157,13 +183,12 @@ export default function SettingsTab() {
           </div>
         </div>
 
-
         {/* GPS Settings */}
         <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div className="flex items-center gap-2 text-blue-700">
               <MapPin className="w-5 h-5" />
-              <h3 className="text-lg font-semibold">Cấu hình Vị trí GPS</h3>
+              <h3 className="text-lg font-semibold">{t('settingsTab.gpsConfig')}</h3>
             </div>
             
             <button
@@ -172,13 +197,13 @@ export default function SettingsTab() {
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-lg transition-colors"
             >
               <Navigation className="w-4 h-4" />
-              Lấy vị trí hiện tại
+              {t('settingsTab.getCurrentLocation')}
             </button>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Vĩ độ (Latitude)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.latitude')}</label>
               <input
                 type="text"
                 name="targetLat"
@@ -190,7 +215,7 @@ export default function SettingsTab() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Kinh độ (Longitude)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.longitude')}</label>
               <input
                 type="text"
                 name="targetLng"
@@ -202,7 +227,7 @@ export default function SettingsTab() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bán kính cho phép (m)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.allowedRadius')}</label>
               <input
                 type="number"
                 name="allowedRadiusMeters"
@@ -214,7 +239,7 @@ export default function SettingsTab() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Mở khóa điểm danh trước ca làm (phút)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.allowCheckInBefore')}</label>
               <input
                 type="number"
                 name="allowCheckInBeforeMinutes"
@@ -225,10 +250,38 @@ export default function SettingsTab() {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Check in and check out */}
+        <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+          <div className="flex items-center gap-2 mb-4 text-blue-700">
+            <Camera className="w-5 h-5" />
+            <h3 className="text-lg font-semibold">Check in và check out</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg">
               <div>
-                <label className="block text-sm font-medium text-gray-900">Cho phép nhân viên chụp ảnh quán khi checkout</label>
-                <p className="text-xs text-gray-500 mt-1">Bắt buộc nhân viên gửi ảnh xác nhận trước khi check-out.</p>
+                <label className="block text-sm font-medium text-gray-900">Check in bằng khuôn mặt</label>
+                <p className="text-xs text-gray-500 mt-1">Bắt buộc nhân viên chụp ảnh khuôn mặt khi bắt đầu ca.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  name="requireCheckinPhoto"
+                  checked={!!settings.requireCheckinPhoto} 
+                  onChange={handleChange}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+            
+            <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg">
+              <div>
+                <label className="block text-sm font-medium text-gray-900">{t('settingsTab.requireCheckoutPhoto')}</label>
+                <p className="text-xs text-gray-500 mt-1">{t('settingsTab.requireCheckoutPhotoDesc')}</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input 
@@ -244,23 +297,67 @@ export default function SettingsTab() {
           </div>
         </div>
 
+        {/* Bank & Payment Info */}
+        <div className="bg-gray-50 p-6 rounded-xl border border-gray-100">
+          <div className="flex items-center gap-2 mb-4 text-blue-700">
+            <Building2 className="w-5 h-5" />
+            <h3 className="text-lg font-semibold">Thông tin để Thanh toán</h3>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mã Ngân hàng (Bank Code)</label>
+              <input
+                type="text"
+                name="bankCode"
+                value={sepayConfig.bankCode || ''}
+                onChange={handleSepayChange}
+                placeholder="VD: MB, VCB, TCB..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Số Tài khoản</label>
+              <input
+                type="text"
+                name="accountNumber"
+                value={sepayConfig.accountNumber || ''}
+                onChange={handleSepayChange}
+                placeholder="VD: 19036578..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tên Tài khoản</label>
+              <input
+                type="text"
+                name="accountName"
+                value={sepayConfig.accountName || ''}
+                onChange={handleSepayChange}
+                placeholder="VD: NGUYEN VAN A"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+        </div>
+
         {/* Payroll & Requests Settings */}
         <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 relative">
           {!isPro && (
             <div className="absolute inset-0 bg-gray-100/70 backdrop-blur-[1px] z-10 rounded-xl flex flex-col items-center justify-center gap-2 cursor-not-allowed">
               <Lock className="w-8 h-8 text-gray-400" />
-              <p className="text-sm font-bold text-gray-500">Tính năng Pro</p>
-              <p className="text-xs text-gray-400">Nâng cấp gói Pro để sử dụng</p>
+              <p className="text-sm font-bold text-gray-500">{t('settingsTab.proFeature')}</p>
+              <p className="text-xs text-gray-400">{t('settingsTab.upgradeToPro')}</p>
             </div>
           )}
           <div className="flex items-center gap-2 mb-4 text-blue-700">
             <Wallet className="w-5 h-5" />
-            <h3 className="text-lg font-semibold">Cấu hình Lương & Ứng tiền</h3>
+            <h3 className="text-lg font-semibold">{t('settingsTab.payrollConfig')}</h3>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Ngày nhận lương hàng tháng (Payday)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.payday')}</label>
               <input
                 type="number"
                 name="payday"
@@ -271,10 +368,10 @@ export default function SettingsTab() {
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
-              <p className="text-xs text-gray-500 mt-1">Giao diện chốt lương sẽ xuất hiện vào ngày này.</p>
+              <p className="text-xs text-gray-500 mt-1">{t('settingsTab.paydayDesc')}</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phần trăm lương được phép ứng (%)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.maxAdvancePercent')}</label>
               <div className="relative">
                 <input
                   type="number"
@@ -290,10 +387,10 @@ export default function SettingsTab() {
                   %
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Hạn mức ứng = (Tổng lương đã làm) x (%)</p>
+              <p className="text-xs text-gray-500 mt-1">{t('settingsTab.maxAdvancePercentDesc')}</p>
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Số ngày làm tối thiểu để được ứng tiền</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('settingsTab.minAdvanceDays')}</label>
               <input
                 type="number"
                 name="minAdvanceDays"
@@ -304,7 +401,7 @@ export default function SettingsTab() {
                 required
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               />
-              <p className="text-xs text-gray-500 mt-1">Nếu nhân viên chưa làm đủ số ngày này trong tháng, họ sẽ không thể gửi yêu cầu ứng tiền.</p>
+              <p className="text-xs text-gray-500 mt-1">{t('settingsTab.minAdvanceDaysDesc')}</p>
             </div>
           </div>
         </div>
@@ -320,7 +417,7 @@ export default function SettingsTab() {
             ) : (
               <Save className="w-5 h-5" />
             )}
-            {isSaving ? 'Đang lưu...' : 'Lưu Cấu Hình'}
+            {isSaving ? t('settingsTab.saving') : t('settingsTab.saveSettings')}
           </button>
         </div>
       </form>
