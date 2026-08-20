@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, getDocs, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
+import { cn } from './lib/utils';
 import { createOrder } from './lib/api';
 import { Menu, LogOut, PackageSearch, AlertTriangle, Clock, Crown, QrCode, CheckCircle2, ChevronLeft, Loader2, Key, Phone, MessageCircle } from 'lucide-react';
 import { addDays, addHours, addMinutes, differenceInMilliseconds } from 'date-fns';
