@@ -263,11 +263,11 @@ export default function StatusTab() {
         timestamp: serverTimestamp()
       });
       
-      showToast('success', t('statusTab.warningSent'));
+      showToast(t('statusTab.warningSent', 'success'));
       setSentWarnings(prev => [...prev, warningModal.log.id]);
       setWarningModal({ show: false, log: null, message: '' });
     } catch (err) {
-      showToast('error', t('statusTab.errorSending'));
+      showToast(t('statusTab.errorSending', 'error'));
     }
   };
 
