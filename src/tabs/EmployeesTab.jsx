@@ -3,7 +3,7 @@ import { collection, query, getDocs, doc, getDoc, setDoc, deleteDoc, where, upda
 import { useTranslation } from 'react-i18next';
 import { useUI } from '../contexts/UIContext';
 import { db } from '../lib/firebase';
-import { Plus, Edit2, Trash2, Search, X, CheckCircle2, TrendingUp, TrendingDown, Lock, Gift, Camera, User } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, CheckCircle2, TrendingUp, TrendingDown, Lock, Gift, Camera, User, Send } from 'lucide-react';
 import FaceCaptureModal from '../components/FaceCaptureModal';
 import { format } from 'date-fns';
 import { cn } from '../lib/utils';
@@ -27,6 +27,7 @@ export default function EmployeesTab() {
   const { storeId, storeData } = useStore();
   const isPro = storeData?.packageType === 'Pro';
   const [employees, setEmployees] = useState([]);
+  const [customPositions, setCustomPositions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState('add'); // 'add' or 'edit'
@@ -44,6 +45,8 @@ export default function EmployeesTab() {
   const [lockEmpModal, setLockEmpModal] = useState({ show: false, employeeCode: '', employeeName: '', note: '' });
   
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
+  
+  
 
   const handleFaceCapture = (faceVector, photoDataUrl) => {
     setFormData(prev => ({
@@ -218,11 +221,11 @@ export default function EmployeesTab() {
           await deleteDoc(doc(db, 'stores', storeId, 'employees', `${employeeCode}`));
           
           // 2. Cascade delete related records
-          const collectionsToClean = ['attendance_logs', 'payslips', 'advance_requests', 'leave_requests', 'notifications'];
+          const collectionsToClean = ['attendance_logs', 'payslips', 'advance_requests', 'leave_requests', 'notifications', 'schedules'];
           for (const col of collectionsToClean) {
-            const q = query(collection(db, col), where('employeeCode', '==', employeeCode));
+            const q = query(collection(db, 'stores', storeId, col), where('employeeCode', '==', employeeCode));
             const snap = await getDocs(q);
-            await Promise.all(snap.docs.map(d => deleteDoc(doc(db, col, d.id))));
+            await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'stores', storeId, col, d.id))));
           }
 
           // 3. Remove from all shifts
@@ -287,7 +290,10 @@ export default function EmployeesTab() {
     emp.employeeCode.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  return (
+  
+  const existingPositions = Array.from(new Set(employees.map(emp => emp.position).filter(Boolean)));
+  const allPositions = Array.from(new Set([...existingPositions, ...customPositions]));
+return (
     <div className="h-full flex flex-col relative">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
@@ -324,7 +330,77 @@ export default function EmployeesTab() {
       {/* Table Container */}
       <div className="flex-1 bg-white border border-gray-200 rounded-xl overflow-hidden flex flex-col">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          
+          {/* Mobile Card View */}
+          <div className="md:hidden block divide-y divide-gray-100">
+            {isLoading ? (
+              <div className="p-8 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>
+            ) : filteredEmployees.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">Không tìm thấy nhân viên nào.</div>
+            ) : (
+              filteredEmployees.map((emp) => (
+                <div key={emp.employeeCode} className="p-4 bg-white hover:bg-gray-50 transition-colors">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {emp.photoUrl ? (
+                          <img src={emp.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          <User className="w-5 h-5 text-gray-400" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-bold text-gray-900 text-base">{emp.fullName}</div>
+                        <div className="text-xs text-gray-500">{emp.employeeCode} • {emp.position || t('employee')}</div>
+                      </div>
+                    </div>
+                    {emp.isOnline ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-50 text-green-700 border border-green-200">{t('active')}</span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-50 text-gray-600 border border-gray-200">{t('offline')}</span>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
+                    <div>
+                      <span className="text-xs text-gray-400 block">{t('salary')}</span>
+                      <span className="font-semibold text-gray-800">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(emp.salaryRate)}</span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-400 block">{t('salary_type')}</span>
+                      <span className="font-medium text-gray-800">{emp.salaryType === 'HOURLY' ? t('hourly') : emp.salaryType === 'DAILY' ? t('daily') : t('monthly')}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                    
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleOpenAdjustModal(emp)}
+                        className="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-2 rounded-lg transition-colors"
+                        title="Điều chỉnh lương"
+                      >
+                        <TrendingUp className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleOpenModal('edit', emp)}
+                        className="text-blue-600 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(emp.employeeCode)}
+                        className="text-red-600 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <table className="min-w-full divide-y divide-gray-200 hidden md:table">
             <thead className="bg-gray-50">
               <tr>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('emp_code')}</th>
