@@ -3,6 +3,7 @@ import { collection, query, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from
 import { db } from '../lib/firebase';
 import { useStore } from '../StoreContext';
 import { useUI } from '../contexts/UIContext';
+import { cn } from '../lib/utils';
 import { Plus, Edit2, Trash2, Image as ImageIcon, Loader2 } from 'lucide-react';
 
 export default function MenuTab() {
@@ -14,6 +15,9 @@ export default function MenuTab() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ id: '', name: '', price: '', category: '', photoUrl: '' });
   const [uploading, setUploading] = useState(false);
+  const [showNewCategory, setShowNewCategory] = useState(false);
+
+  const existingCategories = Array.from(new Set(menuItems.map(item => item.category).filter(Boolean)));
 
   useEffect(() => {
     if (!storeId) return;
@@ -98,39 +102,39 @@ export default function MenuTab() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">Quản lý Thực đơn</h2>
         <button
-          onClick={() => { setFormData({ id: '', name: '', price: '', category: '', photoUrl: '' }); setIsModalOpen(true); }}
+          onClick={() => { setFormData({ id: '', name: '', price: '', category: existingCategories[0] || '', photoUrl: '' }); setShowNewCategory(existingCategories.length === 0); setIsModalOpen(true); }}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
         >
           <Plus className="w-5 h-5" /> Thêm món
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6">
         {menuItems.map(item => (
           <div key={item.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm flex flex-col group">
             {item.photoUrl ? (
-              <img src={item.photoUrl} alt={item.name} className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300" />
+              <img src={item.photoUrl} alt={item.name} className="w-full h-32 md:h-48 object-cover group-hover:scale-105 transition-transform duration-300" />
             ) : (
-              <div className="w-full h-48 bg-gray-50 flex items-center justify-center text-gray-300 group-hover:scale-105 transition-transform duration-300">
-                <ImageIcon className="w-12 h-12" />
+              <div className="w-full h-32 md:h-48 bg-gray-50 flex items-center justify-center text-gray-300 group-hover:scale-105 transition-transform duration-300">
+                <ImageIcon className="w-8 h-8 md:w-12 md:h-12" />
               </div>
             )}
-            <div className="p-4 flex flex-col flex-1 bg-white relative z-10">
-              <h3 className="font-bold text-lg text-gray-900">{item.name}</h3>
-              <p className="text-blue-600 font-black text-lg mb-1">{new Intl.NumberFormat('vi-VN').format(item.price)}đ</p>
-              <p className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-md w-fit mb-4">{item.category}</p>
-              <div className="flex justify-end gap-2 mt-auto pt-4 border-t border-gray-100">
+            <div className="p-3 md:p-4 flex flex-col flex-1 bg-white relative z-10">
+              <h3 className="font-bold text-sm md:text-lg text-gray-900 line-clamp-2 leading-tight mb-1">{item.name}</h3>
+              <p className="text-blue-600 font-black text-sm md:text-lg mb-1">{new Intl.NumberFormat('vi-VN').format(item.price)}đ</p>
+              <p className="text-[10px] md:text-sm text-gray-500 bg-gray-100 px-1.5 py-0.5 md:px-2 md:py-1 rounded w-fit mb-3 truncate max-w-full">{item.category}</p>
+              <div className="flex justify-between md:justify-end gap-1 md:gap-2 mt-auto pt-2 md:pt-4 border-t border-gray-100">
                 <button
-                  onClick={() => { setFormData(item); setIsModalOpen(true); }}
-                  className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg flex items-center gap-1 transition-colors"
+                  onClick={() => { setFormData(item); setShowNewCategory(false); setIsModalOpen(true); }}
+                  className="flex-1 md:flex-none justify-center px-2 md:px-3 py-1.5 md:py-1.5 text-[11px] md:text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg flex items-center gap-1 transition-colors"
                 >
-                  <Edit2 className="w-4 h-4" /> Sửa
+                  <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden sm:inline">Sửa</span>
                 </button>
                 <button
                   onClick={() => handleDelete(item.id)}
-                  className="px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg flex items-center gap-1 transition-colors"
+                  className="flex-1 md:flex-none justify-center px-2 md:px-3 py-1.5 md:py-1.5 text-[11px] md:text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg flex items-center gap-1 transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" /> Xóa
+                  <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden sm:inline">Xóa</span>
                 </button>
               </div>
             </div>
@@ -158,9 +162,37 @@ export default function MenuTab() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Giá (VNĐ)</label>
                   <input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="VD: 35000" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Danh mục</label>
-                  <input required type="text" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="VD: Đồ uống" />
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Danh mục</label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {existingCategories.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => { setFormData({...formData, category: cat}); setShowNewCategory(false); }}
+                        className={cn("px-3 py-1.5 text-xs md:text-sm font-medium rounded-full border transition-colors", formData.category === cat && !showNewCategory ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50")}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewCategory(true); setFormData({...formData, category: ''}); }}
+                      className={cn("px-3 py-1.5 text-xs md:text-sm font-medium rounded-full border transition-colors flex items-center gap-1", showNewCategory ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-gray-50 text-gray-600 border-gray-300 hover:bg-gray-100")}
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Thêm mới
+                    </button>
+                  </div>
+                  {(showNewCategory || existingCategories.length === 0) && (
+                    <input 
+                      required 
+                      type="text" 
+                      value={formData.category} 
+                      onChange={e => setFormData({...formData, category: e.target.value})} 
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none animate-in fade-in slide-in-from-top-2 text-sm" 
+                      placeholder="Nhập tên danh mục mới..." 
+                    />
+                  )}
                 </div>
               </div>
               <div>
