@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Users, ClipboardList, Calculator, Menu, Clock, FileText, ShieldCheck, LogOut, Camera, Lock, Crown, Phone, Mail, UtensilsCrossed, Grid2X2, History, Globe } from 'lucide-react';
+import { Settings, MessageSquare, Users, ClipboardList, Calculator, Menu, Clock, FileText, ShieldCheck, LogOut, Camera, Lock, Crown, Phone, Mail, UtensilsCrossed, Grid2X2, History, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -33,12 +33,12 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pe
     { id: 'settings', label: t('nav.settings'), icon: Settings },
     { id: 'employees', label: t('nav.employees'), icon: Users },
     { id: 'shifts', label: t('nav.shifts'), icon: Clock },
+    { id: 'messages', label: 'Tin nhắn', icon: MessageSquare },
     { id: 'status', label: t('nav.status'), icon: Users },
     { id: 'menu', label: 'Thực đơn', icon: UtensilsCrossed },
     { id: 'tables', label: 'Bàn', icon: Grid2X2 },
     { id: 'history', label: 'Lịch sử & Doanh thu', icon: History },
     { id: 'audit_logs', label: 'Lịch sử Thao tác', icon: ClipboardList },
-    { id: 'logs', label: t('nav.logs'), icon: FileText },
     { id: 'photos', label: t('nav.photos'), icon: Camera },
     { id: 'requests', label: t('nav.requests'), icon: FileText },
     { id: 'payroll', label: t('nav.payroll'), icon: Calculator },
@@ -60,14 +60,14 @@ export default function Sidebar({ activeTab, setActiveTab, isOpen, setIsOpen, pe
       {/* Mobile overlay */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
       
       {/* Sidebar */}
       <div className={cn(
-        "fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out flex flex-col",
+        "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out flex flex-col",
         isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       )}>
         <div className="flex items-center justify-center h-16 border-b border-gray-200">

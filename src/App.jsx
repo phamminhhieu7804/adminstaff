@@ -10,6 +10,7 @@ import EmployeesTab from './tabs/EmployeesTab';
 import ShiftsTab from './tabs/ShiftsTab';
 import LogsTab from './tabs/LogsTab';
 import RequestsTab from './tabs/RequestsTab';
+import MessagesTab from './tabs/MessagesTab';
 import PayrollTab from './tabs/PayrollTab';
 import StatusTab from './tabs/StatusTab';
 import SubscriptionTab from './tabs/SubscriptionTab';
@@ -396,6 +397,7 @@ function MainApp({ storeData, onLogout }) {
       case 'settings': return <SettingsTab />;
       case 'employees': return <EmployeesTab />;
       case 'shifts': return <ShiftsTab />;
+      case 'messages': return <MessagesTab />;
       case 'status': return <StatusTab />;
       case 'menu': return <MenuTab />;
       case 'tables': return <TablesTab />;
@@ -440,9 +442,14 @@ function MainApp({ storeData, onLogout }) {
 
          {/* Mobile Header Only */}
         <div className="lg:hidden bg-white border-b border-gray-200 sticky top-0 z-30 flex items-center justify-between p-4">
-          <h1 className="text-lg font-bold text-gray-800 truncate">
-            {storeData?.storeName || 'Admin Staff'}
-          </h1>
+          <div className="flex flex-col overflow-hidden max-w-[65%]">
+            <h1 className="text-lg font-bold text-gray-800 truncate">
+              {storeData?.storeName || 'Admin Staff'}
+            </h1>
+            <div className={cn("text-[10px] font-bold w-fit px-1.5 py-0.5 rounded mt-0.5", packageType === 'Pro' ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-600")}>
+              Gói {packageType || 'Thường'}
+            </div>
+          </div>
           <div className="flex items-center">
             <NotificationBell setActiveTab={setActiveTab} isMobile={true} />
             <button 
