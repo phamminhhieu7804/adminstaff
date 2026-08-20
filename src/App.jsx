@@ -489,9 +489,9 @@ function App() {
     return isNaN(parsed.getTime()) ? new Date() : parsed;
   };
 
-  // Sync with Firestore and interval check
+  // Sync with Firestore
   useEffect(() => {
-    if (!storeData) return;
+    if (!storeData?.id) return;
     
     // Realtime sync from DB
     const unsub = onSnapshot(doc(db, 'stores', storeData.id), (docSnap) => {
@@ -505,17 +505,18 @@ function App() {
       }
     });
 
-    // Check expiry every second
+    return () => unsub();
+  }, [storeData?.id]);
+
+  // Interval check
+  useEffect(() => {
+    if (!storeData?.expiresAt) return;
     const interval = setInterval(() => {
        const exp = parseDate(storeData.expiresAt);
        setIsExpired(exp < new Date());
     }, 1000);
-
-    return () => {
-       unsub();
-       clearInterval(interval);
-    };
-  }, [storeData?.id, storeData?.expiresAt]);
+    return () => clearInterval(interval);
+  }, [storeData?.expiresAt]);
 
   const handleLogin = (data) => {
     setStoreData(data);

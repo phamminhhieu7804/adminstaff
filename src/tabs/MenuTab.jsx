@@ -32,29 +32,36 @@ export default function MenuTab() {
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
+    // Check file size (limit to 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Ảnh quá lớn. Vui lòng chọn ảnh dưới 2MB.', 'error');
+      return;
+    }
+
     setUploading(true);
     try {
-      // Demo unsigned Cloudinary upload
-      const formData = new FormData();
-      formData.append('file', file);
-      // NOTE: Using a public test preset, normally replace this with real ones
-      formData.append('upload_preset', 'ml_default'); 
-      const res = await fetch(`https://api.cloudinary.com/v1_1/demo/image/upload`, {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
-      if (data.secure_url) {
-        setFormData(prev => ({ ...prev, photoUrl: data.secure_url }));
-        showToast('Tải ảnh lên thành công!');
-      } else {
-        // Fallback for demo preset failing
-        setFormData(prev => ({ ...prev, photoUrl: 'https://via.placeholder.com/300?text=Uploaded+Image' }));
-        showToast('Đã dùng ảnh mẫu (Cloudinary demo có thể bị lỗi CORS/giới hạn).', 'info');
-      }
+      const { ref, uploadBytes, getDownloadURL } = require('firebase/storage');
+      const { storage } = require('../lib/firebase');
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `menu_items/${storeId}_${Date.now()}.${fileExt}`;
+      const storageRef = ref(storage, fileName);
+      
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      setFormData(prev => ({ ...prev, photoUrl: downloadURL }));
+      showToast('Tải ảnh lên thành công!');
     } catch (err) {
       console.error(err);
-      showToast('Lỗi khi tải ảnh lên!', 'error');
+      // Fallback if Storage rules block the upload
+      const reader = new FileReader();
+      reader.onloadend = () => {
+         setFormData(prev => ({ ...prev, photoUrl: reader.result }));
+         showToast('Lưu ảnh tạm bằng Data URL', 'info');
+      };
+      reader.readAsDataURL(file);
     } finally {
       setUploading(false);
     }

@@ -6,6 +6,7 @@ import { format, startOfMonth, endOfMonth, startOfDay, endOfDay } from 'date-fns
 import { cn } from '../lib/utils';
 import { useStore } from '../StoreContext';
 import { useTranslation } from 'react-i18next';
+import LogsTab from './LogsTab';
 
 export default function StatusTab() {
   const { storeId } = useStore();
@@ -31,11 +32,11 @@ export default function StatusTab() {
   useEffect(() => {
     if (!storeData?.id) return;
     
-    const unEmployees = onSnapshot(query(collection(db, 'stores', storeId, 'employees'), where('storeId', '==', storeData.id)), (snap) => {
+    const unEmployees = onSnapshot(query(collection(db, 'stores', storeId, 'employees')), (snap) => {
       setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     
-    const unShifts = onSnapshot(query(collection(db, 'stores', storeId, 'shifts'), where('storeId', '==', storeData.id)), (snap) => {
+    const unShifts = onSnapshot(query(collection(db, 'stores', storeId, 'shifts')), (snap) => {
       setShifts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     
@@ -46,8 +47,7 @@ export default function StatusTab() {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     
     const unSchedules = onSnapshot(query(
-        collection(db, 'stores', storeId, 'schedules'), 
-        where('storeId', '==', storeData.id),
+        collection(db, 'stores', storeId, 'schedules'),
         where('date', '>=', startStr), 
         where('date', '<=', endStr)
     ), (snap) => {
@@ -55,8 +55,7 @@ export default function StatusTab() {
     });
 
     const unLeaves = onSnapshot(query(
-        collection(db, 'stores', storeId, 'leave_requests'), 
-        where('storeId', '==', storeData.id),
+        collection(db, 'stores', storeId, 'leave_requests'),
         where('status', '==', 'approved')
     ), (snap) => {
        const leaves = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -65,15 +64,14 @@ export default function StatusTab() {
     });
     
     const unAdjustments = onSnapshot(query(
-      collection(db, 'stores', storeId, 'salary_adjustments'), 
-      where('storeId', '==', storeData.id)
+      collection(db, 'stores', storeId, 'salary_adjustments')
     ), (snap) => {
        setSalaryAdjustments(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
     });
     
     // Only fetch this month's logs for stats, but we need today's logs for current status
     
-    const unLogs = onSnapshot(query(collection(db, 'stores', storeId, 'attendance_logs'), where('storeId', '==', storeData.id)), (snap) => {
+    const unLogs = onSnapshot(query(collection(db, 'stores', storeId, 'attendance_logs')), (snap) => {
       const allLogs = snap.docs.map(d => {
         const data = d.data();
         let dateObj = new Date();
@@ -273,16 +271,23 @@ export default function StatusTab() {
     }
   };
 
-  return (
-    <div className="h-full flex flex-col relative">
-
-
-      <div className="mb-6">
+    return (
+    <div className="h-full flex flex-col relative overflow-hidden">
+      <div className="mb-6 shrink-0">
         <h2 className="text-2xl font-bold text-gray-900">{t('statusTab.statusTrackingTitle')}</h2>
         <p className="text-gray-500 mt-1">{t('statusTab.statusTrackingDesc')}</p>
       </div>
-
-      <div className="mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
+        {/* Left Column: LogsTab */}
+        <div className="w-full lg:w-1/2 flex flex-col bg-white border border-gray-200 rounded-xl p-4 shadow-sm min-h-0 overflow-auto">
+          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><History className="w-5 h-5"/> Lịch sử chấm công</h3>
+          <LogsTab isEmbedded={true} />
+        </div>
+        
+        {/* Right Column: Status Cards */}
+        <div className="w-full lg:w-1/2 flex flex-col bg-white border border-gray-200 rounded-xl p-4 shadow-sm min-h-0 overflow-auto">
+      
+      <div className="mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3 shrink-0">
         <div className="relative flex-1 max-w-md">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400" />
@@ -360,6 +365,8 @@ export default function StatusTab() {
         </div>
       </div>
 
+              </div>
+      </div>
       {/* Employee Details Modal */}
       {selectedEmployee && (
         <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4">
@@ -496,7 +503,7 @@ export default function StatusTab() {
 
       {/* Warning Message Modal */}
       {warningModal.show && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-red-50 text-red-900">
               <h4 className="font-bold flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> {t('statusTab.composeWarning')}</h4>
