@@ -21,6 +21,7 @@ export default function SettingsTab() {
     minAdvanceDays: 5,
     requireCheckoutPhoto: false,
     requireCheckinPhoto: false,
+    allowAttendance: true,
   });
   
   const [sepayConfig, setSepayConfig] = useState({
@@ -261,6 +262,7 @@ export default function SettingsTab() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
             <div className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg">
               <div>
                 <label className="block text-sm font-medium text-gray-900">Check in bằng khuôn mặt</label>

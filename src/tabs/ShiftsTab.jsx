@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, addDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, addDoc, updateDoc, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Plus, Edit2, Trash2, X, CheckCircle2, Clock, CalendarDays, ChevronLeft, ChevronRight, Lock, Unlock } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -13,6 +13,8 @@ export default function ShiftsTab() {
   const { storeId } = useStore();
   const { t } = useTranslation();
   const [shifts, setShifts] = useState([]);
+  const [offDays, setOffDays] = useState([]);
+  const [offDayForm, setOffDayForm] = useState({ type: 'date', date: '', weekday: '0' });
   const [schedules, setSchedules] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [storeSettings, setStoreSettings] = useState({});
@@ -38,6 +40,9 @@ export default function ShiftsTab() {
       setShifts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     
+    const unOffDays = onSnapshot(collection(db, 'stores', storeId, 'off_days'), (snap) => {
+      setOffDays(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
     const unEmp = onSnapshot(collection(db, 'stores', storeId, 'employees'), (snap) => {
       setEmployees(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -47,7 +52,7 @@ export default function ShiftsTab() {
     });
 
     setIsLoading(false);
-    return () => { unShifts(); unEmp(); unSettings(); };
+    return () => { unShifts(); unEmp(); unSettings(); unOffDays(); };
   }, []);
 
   // Fetch Schedules for current week
@@ -235,6 +240,60 @@ export default function ShiftsTab() {
     }
   };
 
+  
+  const handleAddOffDay = async () => {
+    if (offDayForm.type === 'date' && !offDayForm.date) {
+      showToast('Vui lòng chọn ngày', 'error'); return;
+    }
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, 'stores', storeId, 'off_days'), {
+        type: offDayForm.type,
+        date: offDayForm.type === 'date' ? offDayForm.date : null,
+        weekday: offDayForm.type === 'weekday' ? offDayForm.weekday : null,
+        createdAt: serverTimestamp()
+      });
+
+      const msg = offDayForm.type === 'date' ? `ngày ${format(parseISO(offDayForm.date), 'dd/MM/yyyy')}` : 
+                  (offDayForm.weekday === '0' ? 'Chủ nhật hàng tuần' : `thứ ${Number(offDayForm.weekday)+1} hàng tuần`);
+      await updateDoc(doc(db, 'stores', storeId), {
+         latestOffDayAlert: {
+            timestamp: new Date().getTime(),
+            message: `THÔNG BÁO: Quán sẽ nghỉ vào ${msg}. Các ca làm vào thời gian này sẽ tự động bị hủy.`
+         }
+      });
+
+      const snaps = await getDocs(collection(db, 'stores', storeId, 'schedules'));
+      const batchDeletes = [];
+      snaps.docs.forEach(d => {
+         const sch = d.data();
+         if (!sch.date) return;
+         if (offDayForm.type === 'date' && sch.date === offDayForm.date) {
+            batchDeletes.push(deleteDoc(doc(db, 'stores', storeId, 'schedules', d.id)));
+         } else if (offDayForm.type === 'weekday') {
+            const schDate = parseISO(sch.date);
+            if (schDate.getDay().toString() === offDayForm.weekday) {
+               batchDeletes.push(deleteDoc(doc(db, 'stores', storeId, 'schedules', d.id)));
+            }
+         }
+      });
+      await Promise.all(batchDeletes);
+
+      showToast('Đã thiết lập ngày nghỉ', 'success');
+    } catch(err) {
+      console.error(err);
+      showToast('Lỗi khi thiết lập', 'error');
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleDeleteOffDay = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'stores', storeId, 'off_days', id));
+      showToast('Đã xóa ngày nghỉ');
+    } catch(err) { showToast('Lỗi', 'error'); }
+  };
+
   const handleAddSchedule = async () => {
     if (!selectedEmpCode || !assignModal.date || !assignModal.shift) return;
     const emp = employees.find(e => e.employeeCode === selectedEmpCode);
@@ -307,10 +366,20 @@ export default function ShiftsTab() {
                      {weekDays.map(day => {
                         const dateStr = format(day, 'yyyy-MM-dd');
                         const cellSchedules = schedules.filter(s => s.shiftId === shift.id && s.date === dateStr);
+            const dayOfWeek = day.getDay().toString();
+            const isOffDay = offDays.some(od => 
+               (od.type === 'date' && od.date === dateStr) || 
+               (od.type === 'weekday' && od.weekday === dayOfWeek)
+            );
                         const isFull = cellSchedules.length >= (shift.maxEmployees || 1);
                         return (
-                          <td key={dateStr} className="p-1 border-r border-gray-200 align-top relative group min-h-[90px] h-[90px]">
-                             <div className="absolute inset-0 p-1.5 overflow-y-auto">
+                          <td key={dateStr} className={`p-1 border-r border-gray-200 align-top relative group min-h-[90px] h-[90px] ${isOffDay ? "bg-gray-200 opacity-60" : ""}`}>
+                             {isOffDay && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                     <div className="bg-red-600/90 text-white font-bold text-[10px] md:text-xs px-2 py-1 rounded uppercase tracking-wider transform -rotate-12 shadow-sm whitespace-nowrap">Quán Nghỉ</div>
+                  </div>
+                )}
+                <div className={`absolute inset-0 p-1.5 overflow-y-auto ${isOffDay ? "pointer-events-none" : ""}`}>
                                 <div className="flex justify-between items-center mb-1.5">
                                   <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded w-full text-center border", isFull ? "bg-red-50 text-red-700 border-red-200" : (cellSchedules.length > 0 ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-100 text-gray-500 border-transparent"))}>
                                      {cellSchedules.length} / {shift.maxEmployees || 1}
@@ -339,7 +408,60 @@ export default function ShiftsTab() {
 
       {/* SHIFT DEFINITION SECTION */}
       <div>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+        
+      {/* OFF DAYS SECTION */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 className="text-xl font-bold text-gray-900 mb-2">Thiết Lập Ngày Nghỉ Quán</h3>
+        <p className="text-gray-500 text-sm mb-6">Đóng cửa quán vào các ngày cụ thể hoặc thứ trong tuần. Các ca làm việc sẽ bị hủy và không thể đăng ký.</p>
+        
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+           <select 
+              value={offDayForm.type} 
+              onChange={e => setOffDayForm({...offDayForm, type: e.target.value})}
+              className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-blue-500"
+           >
+              <option value="date">Ngày cụ thể</option>
+              <option value="weekday">Thứ trong tuần (Định kỳ)</option>
+           </select>
+           {offDayForm.type === 'date' ? (
+              <input type="date" className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-blue-500" 
+                     value={offDayForm.date} onChange={e => setOffDayForm({...offDayForm, date: e.target.value})} />
+           ) : (
+              <select className="px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-blue-500"
+                      value={offDayForm.weekday} onChange={e => setOffDayForm({...offDayForm, weekday: e.target.value})}>
+                 <option value="1">Thứ hai</option>
+                 <option value="2">Thứ ba</option>
+                 <option value="3">Thứ tư</option>
+                 <option value="4">Thứ năm</option>
+                 <option value="5">Thứ sáu</option>
+                 <option value="6">Thứ bảy</option>
+                 <option value="0">Chủ nhật</option>
+              </select>
+           )}
+           <button onClick={handleAddOffDay} disabled={isSubmitting} className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg flex items-center justify-center gap-2 font-medium">
+             <Plus className="w-5 h-5"/> Thêm ngày nghỉ
+           </button>
+        </div>
+
+        {offDays.length > 0 && (
+           <div className="flex flex-wrap gap-3">
+             {offDays.map(od => (
+                <div key={od.id} className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 flex items-center gap-3">
+                   <span className="font-semibold text-red-700">
+                     {od.type === 'date' && od.date ? format(parseISO(od.date), 'dd/MM/yyyy') : 
+                      (od.weekday === '0' ? 'Chủ nhật hàng tuần' : `Thứ ${Number(od.weekday) + 1} hàng tuần`)}
+                   </span>
+                   <button onClick={() => handleDeleteOffDay(od.id)} className="text-red-500 hover:text-red-800 bg-red-100 hover:bg-red-200 p-1 rounded">
+                      <X className="w-4 h-4"/>
+                   </button>
+                </div>
+             ))}
+           </div>
+        )}
+      </div>
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+
           <div>
             <h2 className="text-2xl font-bold text-gray-900">{t('shiftsTab.shiftListTitle')}</h2>
             <p className="text-gray-500 mt-1">{t('shiftsTab.shiftListDesc')}</p>

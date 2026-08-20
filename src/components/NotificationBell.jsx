@@ -20,9 +20,9 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
 
   useEffect(() => {
     if (onCountChange) {
-      onCountChange(requests.length);
+      onCountChange(requests.filter(r => r.reqType !== 'checkout_photo').length);
     }
-  }, [requests.length, onCountChange]);
+  }, [requests, onCountChange]);
 
   useEffect(() => {
     // Fetch pending leave_requests
@@ -31,6 +31,14 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
       where('status', '==', 'pending')
     );
     const unsubLeave = onSnapshot(qLeave, (snap) => {
+      if (!isInitialLoad.current) {
+        snap.docChanges().forEach(change => {
+          if (change.type === 'added') {
+             const data = change.doc.data();
+             showToast(`🔔 Nhân viên ${data.employeeName || data.fullName || data.employeeCode} vừa xin nghỉ phép ${data.days} ngày. Lý do: ${data.reason}`, 'info', false);
+          }
+        });
+      }
       const docs = snap.docs.map(d => ({ id: d.id, reqType: 'leave_requests', label: 'Xin nghỉ phép', ...d.data() }));
       setRequests(prev => {
         const filtered = prev.filter(r => r.reqType !== 'leave_requests');
@@ -44,6 +52,14 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
       where('status', '==', 'pending')
     );
     const unsubAdvance = onSnapshot(qAdvance, (snap) => {
+      if (!isInitialLoad.current) {
+        snap.docChanges().forEach(change => {
+          if (change.type === 'added') {
+             const data = change.doc.data();
+             showToast(`💰 Nhân viên ${data.employeeName || data.fullName || data.employeeCode} vừa xin ứng ${new Intl.NumberFormat('vi-VN').format(data.amount || 0)}đ. Lý do: ${data.reason}`, 'info', false);
+          }
+        });
+      }
       const docs = snap.docs.map(d => ({ id: d.id, reqType: 'advance_requests', label: 'Xin ứng tiền', ...d.data() }));
       setRequests(prev => {
         const filtered = prev.filter(r => r.reqType !== 'advance_requests');
@@ -57,6 +73,14 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
       where('unlockRequested', '==', true)
     );
     const unsubLocked = onSnapshot(qLocked, (snap) => {
+      if (!isInitialLoad.current) {
+        snap.docChanges().forEach(change => {
+          if (change.type === 'added') {
+             const data = change.doc.data();
+             showToast(`🔒 Nhân viên ${data.fullName || data.employeeCode} yêu cầu mở khóa tài khoản. Lý do: ${data.appealNote || 'Không có'}`, 'info', false);
+          }
+        });
+      }
       const docs = snap.docs.map(d => ({
         id: d.id,
         reqType: 'unlock_request',
@@ -83,7 +107,7 @@ export default function NotificationBell({ setActiveTab, isMobile = false, onCou
         snap.docChanges().forEach(change => {
           if (change.type === 'added') {
              const data = change.doc.data();
-             showToast(`📸 Nhân viên ${data.employeeName} vừa gửi ảnh Check-out mới!`);
+             showToast(`📸 Nhân viên ${data.employeeName} vừa gửi ảnh Check-out mới!`, 'info', false);
           }
         });
       }

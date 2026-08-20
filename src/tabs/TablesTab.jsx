@@ -78,7 +78,7 @@ export default function TablesTab() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {tables.map(table => (
-          <div key={table.id} className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col items-center gap-3 shadow-sm hover:border-blue-300 transition-colors">
+          <div key={table.id} onClick={() => { if(table.status !== 'empty') setReceiptModal(table); }} className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col items-center gap-3 shadow-sm hover:border-blue-300 transition-colors cursor-pointer relative group">
             <div className={`w-20 h-20 rounded-full flex items-center justify-center text-xl font-black ${table.status === 'empty' ? 'bg-gray-100 text-gray-700' : 'bg-green-100 text-green-700 ring-4 ring-green-50'}`}>
               {table.name}
             </div>
@@ -87,17 +87,17 @@ export default function TablesTab() {
             </span>
             <div className="flex gap-2 mt-2 w-full">
               {table.status !== 'empty' && (
-                <button onClick={() => setReceiptModal(table)} className="p-2 text-green-600 hover:bg-green-50 hover:text-green-700 rounded-lg flex-1 flex justify-center transition-colors" title="Chi tiết Hóa đơn & Giảm giá">
+                <button onClick={(e) => { e.stopPropagation(); setReceiptModal(table); }} className="p-2 text-green-600 hover:bg-green-50 hover:text-green-700 rounded-lg flex-1 flex justify-center transition-colors" title="Chi tiết Hóa đơn & Giảm giá">
                   <Receipt className="w-5 h-5" />
                 </button>
               )}
-              <button onClick={() => setQrModal(table)} className="p-2 text-blue-600 hover:bg-blue-50 hover:text-blue-700 rounded-lg flex-1 flex justify-center transition-colors" title="Mã QR gọi món">
+              <button onClick={(e) => { e.stopPropagation(); setQrModal(table); }} className="p-2 text-blue-600 hover:bg-blue-50 hover:text-blue-700 rounded-lg flex-1 flex justify-center transition-colors" title="Mã QR gọi món">
                 <QrCode className="w-5 h-5" />
               </button>
-              <button onClick={() => { setFormData(table); setIsModalOpen(true); }} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg flex-1 flex justify-center transition-colors" title="Chỉnh sửa">
+              <button onClick={(e) => { e.stopPropagation(); setFormData(table); setIsModalOpen(true); }} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg flex-1 flex justify-center transition-colors" title="Chỉnh sửa">
                 <Edit2 className="w-5 h-5" />
               </button>
-              <button onClick={() => handleDelete(table.id)} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg flex-1 flex justify-center transition-colors" title="Xóa bàn">
+              <button onClick={(e) => { e.stopPropagation(); handleDelete(table.id); }} className="p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg flex-1 flex justify-center transition-colors" title="Xóa bàn">
                 <Trash2 className="w-5 h-5" />
               </button>
             </div>
@@ -118,6 +118,11 @@ export default function TablesTab() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tên bàn</label>
                 <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="VD: Bàn 1" />
+                {!formData.id && (
+                  <button type="button" onClick={() => setFormData({...formData, name: 'Mang về'})} className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline inline-block">
+                    + Thêm dòng "Mang về"
+                  </button>
+                )}
               </div>
               <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-gray-100">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">Hủy</button>

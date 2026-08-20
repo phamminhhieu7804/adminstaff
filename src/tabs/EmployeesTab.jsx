@@ -39,7 +39,7 @@ export default function EmployeesTab() {
   const [adjustTarget, setAdjustTarget] = useState(null);
   const [adjustForm, setAdjustForm] = useState({ type: 'increase', amount: '', salaryType: 'HOURLY', reason: '' });
   
-  const { showToast, showConfirm } = useUI();
+  const { showToast, showConfirm, showPrompt } = useUI();
   
   // Lock Employee Modal
   const [lockEmpModal, setLockEmpModal] = useState({ show: false, employeeCode: '', employeeName: '', note: '' });
@@ -604,13 +604,32 @@ return (
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('position')}</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                    placeholder={t('placeholder_position')}
-                    value={formData.position || ''}
-                    onChange={(e) => setFormData({...formData, position: e.target.value})}
-                  />
+                  <div className="flex gap-2">
+                    <select
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white"
+                      value={formData.position || ''}
+                      onChange={(e) => setFormData({...formData, position: e.target.value})}
+                    >
+                      <option value="" disabled>-- Chọn chức vụ --</option>
+                      {allPositions.map(pos => (
+                        <option key={pos} value={pos}>{pos}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        showPrompt('Nhập tên chức vụ mới:', '', (newPos) => {
+                          if (newPos && newPos.trim() !== '') {
+                            setCustomPositions(prev => [...prev, newPos.trim()]);
+                            setFormData({...formData, position: newPos.trim()});
+                          }
+                        }, 'VD: Thu ngân, Bếp...');
+                      }}
+                      className="px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 font-medium text-sm whitespace-nowrap transition-colors"
+                    >
+                      + Thêm
+                    </button>
+                  </div>
                 </div>
                 
                 <div>

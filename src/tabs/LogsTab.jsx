@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { useStore } from '../StoreContext';
 
-export default function LogsTab() {
+export default function LogsTab({ isEmbedded = false }) {
   const { storeId } = useStore();
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,12 +80,14 @@ export default function LogsTab() {
   );
 
   return (
-    <div className="h-full flex flex-col">
+    <div className={isEmbedded ? "h-full flex flex-col" : "h-full flex flex-col"}>
+      {!isEmbedded && (
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Bảng Theo Dõi Chấm Công</h2>
         <p className="text-gray-500 mt-1">Lịch sử check-in và check-out của tất cả nhân viên.</p>
       </div>
 
+      )}
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
         <div className="flex-1 relative">

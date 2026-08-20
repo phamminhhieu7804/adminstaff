@@ -64,7 +64,7 @@ export default function RequestsTab() {
           await updateDoc(doc(db, 'stores', storeId, 'employees', actionModal.req.id), { unlockRequested: false, adminReply: adminNote });
         }
       } else {
-        await updateDoc(doc(db, actionModal.reqType, actionModal.req.id), { 
+        await updateDoc(doc(db, 'stores', storeId, actionModal.reqType, actionModal.req.id), { 
           status: actionModal.type,
           adminNote: adminNote 
         });
@@ -263,7 +263,8 @@ export default function RequestsTab() {
       {actionModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="p-6">
+            <div className="p-6 relative">
+              <button onClick={() => setActionModal({ show: false, type: '', req: null, reqType: '' })} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><XCircle className="w-5 h-5" /></button>
               <h3 className="text-lg font-bold text-gray-900 mb-2">
                 Xác nhận {actionModal.type === 'approved' ? 'duyệt' : 'từ chối'} yêu cầu?
               </h3>

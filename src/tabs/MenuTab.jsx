@@ -8,16 +8,17 @@ import { Plus, Edit2, Trash2, Image as ImageIcon, Loader2 } from 'lucide-react';
 
 export default function MenuTab() {
   const { storeId } = useStore();
-  const { showToast, showConfirm } = useUI();
+  const { showToast, showConfirm, showPrompt } = useUI();
   const [menuItems, setMenuItems] = useState([]);
   const [loading, setLoading] = useState(true);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ id: '', name: '', price: '', category: '', photoUrl: '' });
   const [uploading, setUploading] = useState(false);
-  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [customCategories, setCustomCategories] = useState([]);
 
   const existingCategories = Array.from(new Set(menuItems.map(item => item.category).filter(Boolean)));
+  const allCategories = Array.from(new Set([...existingCategories, ...customCategories]));
 
   useEffect(() => {
     if (!storeId) return;
@@ -109,7 +110,7 @@ export default function MenuTab() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-800">Quản lý Thực đơn</h2>
         <button
-          onClick={() => { setFormData({ id: '', name: '', price: '', category: existingCategories[0] || '', photoUrl: '' }); setShowNewCategory(existingCategories.length === 0); setIsModalOpen(true); }}
+          onClick={() => { setFormData({ id: '', name: '', price: '', category: allCategories[0] || '', photoUrl: '' }); setIsModalOpen(true); }}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition shadow-sm font-medium"
         >
           <Plus className="w-5 h-5" /> Thêm món
@@ -132,7 +133,7 @@ export default function MenuTab() {
               <p className="text-[10px] md:text-sm text-gray-500 bg-gray-100 px-1.5 py-0.5 md:px-2 md:py-1 rounded w-fit mb-3 truncate max-w-full">{item.category}</p>
               <div className="flex justify-between md:justify-end gap-1 md:gap-2 mt-auto pt-2 md:pt-4 border-t border-gray-100">
                 <button
-                  onClick={() => { setFormData(item); setShowNewCategory(false); setIsModalOpen(true); }}
+                  onClick={() => { setFormData(item); setIsModalOpen(true); }}
                   className="flex-1 md:flex-none justify-center px-2 md:px-3 py-1.5 md:py-1.5 text-[11px] md:text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg flex items-center gap-1 transition-colors"
                 >
                   <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" /> <span className="hidden sm:inline">Sửa</span>
@@ -164,42 +165,58 @@ export default function MenuTab() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tên món</label>
                 <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="VD: Trà đào cam sả" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              
+              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Giá (VNĐ)</label>
                   <input required type="number" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="VD: 35000" />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Danh mục</label>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {existingCategories.map(cat => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => { setFormData({...formData, category: cat}); setShowNewCategory(false); }}
-                        className={cn("px-3 py-1.5 text-xs md:text-sm font-medium rounded-full border transition-colors", formData.category === cat && !showNewCategory ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50")}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => { setShowNewCategory(true); setFormData({...formData, category: ''}); }}
-                      className={cn("px-3 py-1.5 text-xs md:text-sm font-medium rounded-full border transition-colors flex items-center gap-1", showNewCategory ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-gray-50 text-gray-600 border-gray-300 hover:bg-gray-100")}
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Thêm mới
-                    </button>
-                  </div>
-                  {(showNewCategory || existingCategories.length === 0) && (
-                    <input 
-                      required 
-                      type="text" 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Thể loại món (Danh mục)</label>
+                  <div className="flex gap-2">
+                    <select 
+                      required
                       value={formData.category} 
                       onChange={e => setFormData({...formData, category: e.target.value})} 
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none animate-in fade-in slide-in-from-top-2 text-sm" 
-                      placeholder="Nhập tên danh mục mới..." 
-                    />
-                  )}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white min-w-0"
+                    >
+                      <option value="" disabled>-- Chọn thể loại --</option>
+                      {allCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        showPrompt('Nhập tên thể loại món mới:', '', (newCat) => {
+                          if (newCat && newCat.trim() !== '') {
+                            setCustomCategories(prev => [...prev, newCat.trim()]);
+                            setFormData({...formData, category: newCat.trim()});
+                          }
+                        }, 'VD: Đồ uống, Đồ ăn vặt...');
+                      }}
+                      className="px-3 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 font-medium text-sm flex items-center whitespace-nowrap transition-colors"
+                    >
+                      <Plus className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Thêm</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (formData.category) {
+                          showConfirm('Xóa thể loại', `Bạn có chắc muốn xóa thể loại "${formData.category}" khỏi danh sách chọn?`, () => {
+                            setCustomCategories(prev => prev.filter(c => c !== formData.category));
+                            setFormData({...formData, category: ''});
+                          });
+                        } else {
+                          showToast('Vui lòng chọn một thể loại để xóa', 'error');
+                        }
+                      }}
+                      className="px-3 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm flex items-center whitespace-nowrap transition-colors"
+                      title="Xóa thể loại đang chọn"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
               <div>

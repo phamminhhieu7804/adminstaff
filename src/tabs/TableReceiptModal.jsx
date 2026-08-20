@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { X, Receipt, Tag } from 'lucide-react';
+import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { X, Receipt, Tag, Clock, User, CheckCircle2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { vi } from 'date-fns/locale';
 
 export default function TableReceiptModal({ table, storeId, db, onClose, showToast }) {
   const [discountType, setDiscountType] = useState(table?.discount?.type || 'amount');
   const [discountValue, setDiscountValue] = useState(table?.discount?.value || table?.discount?.amount || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
 
   const orders = table.orders || [];
   const subTotal = orders.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -38,8 +41,59 @@ export default function TableReceiptModal({ table, storeId, db, onClose, showToa
     }
   };
 
+  const handleCashPayment = async () => {
+    showConfirm('Xác nhận thanh toán', `Xác nhận bàn ${table.name} đã thanh toán thành công và đóng bàn?`, async () => {
+    setIsPaying(true);
+    try {
+      // Lưu lịch sử đơn hàng
+      await addDoc(collection(db, 'stores', storeId, 'order_history'), {
+        tableId: table.id,
+        tableName: table.name,
+        orders: table.orders || [],
+        totalAmount: finalTotal,
+        subTotal: subTotal,
+        discount: {
+          type: discountType,
+          value: discountValueNum,
+          amount: computedDiscountAmount
+        },
+        paymentMethod: 'cash',
+        completedAt: new Date().toISOString(),
+        employeeCode: 'ADMIN',
+        employeeName: 'Quản lý / Chủ quán'
+      });
+
+      // Reset bàn về empty
+      await updateDoc(doc(db, 'stores', storeId, 'tables', table.id), {
+        status: 'empty',
+        orders: [],
+        discount: null,
+        openedBy: null,
+        openedAt: null
+      });
+
+      showToast('Thanh toán thành công!', 'success');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi khi thanh toán', 'error');
+    } finally {
+      setIsPaying(false);
+    }
+    });
+  };
+
+  const formatDate = (isoString) => {
+    if (!isoString) return 'Không xác định';
+    try {
+      return format(new Date(isoString), 'HH:mm - dd/MM/yyyy', { locale: vi });
+    } catch (e) {
+      return isoString;
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={(e) => e.stopPropagation()}>
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 flex flex-col max-h-[90vh]">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -50,15 +104,31 @@ export default function TableReceiptModal({ table, storeId, db, onClose, showToa
         </div>
 
         <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+          {(table.openedBy || table.openedAt) && (
+            <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 flex flex-col gap-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600 flex items-center gap-1"><User className="w-4 h-4"/> Người mở bàn:</span>
+                <span className="font-semibold text-blue-800">{table.openedBy || 'Không xác định'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600 flex items-center gap-1"><Clock className="w-4 h-4"/> Thời gian mở:</span>
+                <span className="font-semibold text-blue-800">{formatDate(table.openedAt)}</span>
+              </div>
+            </div>
+          )}
+
           <div>
             <h4 className="text-sm font-semibold text-gray-700 uppercase mb-2">Danh sách món</h4>
-            <div className="bg-gray-50 rounded-xl p-3 space-y-2 border border-gray-100">
+            <div className="bg-gray-50 rounded-xl p-3 space-y-2 border border-gray-100 max-h-[30vh] overflow-y-auto">
               {orders.length === 0 ? (
                 <p className="text-sm text-gray-500">Chưa gọi món nào.</p>
               ) : (
                 orders.map((o, idx) => (
-                  <div key={idx} className="flex justify-between text-sm">
-                    <span>{o.quantity}x {o.name}</span>
+                  <div key={idx} className="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
+                    <div className="flex flex-col">
+                      <span className="font-medium text-gray-800">{o.quantity}x {o.name}</span>
+                      {o.note && <span className="text-xs text-orange-600 italic">Ghi chú: {o.note}</span>}
+                    </div>
                     <span className="font-medium">{(o.price * o.quantity).toLocaleString('vi-VN')}đ</span>
                   </div>
                 ))
@@ -112,12 +182,21 @@ export default function TableReceiptModal({ table, storeId, db, onClose, showToa
           </form>
 
           <div className="border-t border-dashed border-gray-300 pt-4 mt-4">
-            <div className="flex justify-between text-lg font-black text-gray-900">
+            <div className="flex justify-between text-lg font-black text-gray-900 mb-4">
               <span>Khách cần thanh toán:</span>
               <span className="text-orange-600">{finalTotal.toLocaleString('vi-VN')}đ</span>
             </div>
-            <p className="text-xs text-gray-500 text-center mt-2">
-              (Khách hàng sẽ thấy mã QR tự động cập nhật số tiền này)
+            
+            <button 
+              onClick={handleCashPayment}
+              disabled={isPaying || orders.length === 0}
+              className="w-full py-3 bg-green-600 text-white rounded-xl font-bold text-base hover:bg-green-700 transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+            >
+              <CheckCircle2 className="w-5 h-5" />
+              {isPaying ? 'Đang xử lý...' : 'Xác nhận thanh toán'}
+            </button>
+            <p className="text-xs text-gray-500 text-center mt-3">
+              (Thanh toán sẽ làm trống bàn và lưu vào lịch sử)
             </p>
           </div>
         </div>
